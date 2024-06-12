@@ -60,6 +60,15 @@ const userSchema = new mongoose.Schema(
         accessTokenId: {
             type: String,
         },
+        balance: {
+            type: Number,
+            default: 0,
+        },
+        virtualCard: {
+            number: String,
+            expiry: Date,
+            cvv: String,
+        },
     },
     { timestamps: true }
 );

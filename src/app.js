@@ -36,7 +36,9 @@ app.use(
 );
 
 import userRouter from "./routes/user.route.js";
+import transactionRouter from "./routes/transaction.route.js";
 
 app.use("/api/v1/users", userRouter);
+app.use("/api/v1/transactions", transactionRouter);
 
 export default app;
