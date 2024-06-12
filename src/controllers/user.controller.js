@@ -156,7 +156,7 @@ const getUser = asyncHandler(async (req, res) => {
         throw new ApiError(401, "User not found!");
     }
 
-    const user = await User.findById(userId).select(
+    const user = await User.findOne({ _id: userId, verified: true }).select(
         "-password -accessToken -accessTokenId -accessTokenExpiry "
     );
     if (!user) {
@@ -170,4 +170,40 @@ const getUser = asyncHandler(async (req, res) => {
         );
 });
 
-export { registerUser, loginUser, verifyUserIP, getUser };
+const updateUser = asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+    if (!userId) {
+        throw new ApiError(401, "User not found!");
+    }
+
+    const { firstName, lastName } = req.body;
+    if ([firstName, lastName].some((field) => field.trim() === "")) {
+        throw new ApiError(401, "Provide all fields!");
+    }
+
+    const user = await User.findByIdAndUpdate(
+        userId,
+        {
+            $set: {
+                firstName: firstName,
+                lastName: lastName,
+            },
+        },
+        {
+            new: true,
+            runValidators: true,
+        }
+    ).select("-password -accessToken -accessTokenId -accessTokenExpiry");
+
+    return res
+        .status(200)
+        .json(
+            new ApiResponse(
+                200,
+                { user: user, message: "User Updated SuccessFully!" },
+                "User Updated SuccessFully!"
+            )
+        );
+});
+
+export { registerUser, loginUser, verifyUserIP, getUser, updateUser };
