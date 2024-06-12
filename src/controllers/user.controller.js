@@ -14,6 +14,7 @@ const cookieOptions = {
 const generateToken = async (userId) => {
     try {
         const accessTokenId = `${uuid()}-${Date.now()}`;
+        const accessTokenExpiry = new Date(Date.now() + 1000 * 60 * 60);
 
         const accessToken = await jwt.sign(
             {
@@ -29,7 +30,7 @@ const generateToken = async (userId) => {
         const user = await User.findById(userId);
         user.accessToken = accessToken;
         user.accessTokenId = accessTokenId;
-        user.accessTokenExpiry = new Date(Date.now() + 1000 * 60 * 60);
+        user.accessTokenExpiry = accessTokenExpiry;
         await user.save({ validateBeforeSave: false });
 
         return accessToken;
@@ -115,4 +116,58 @@ const loginUser = asyncHandler(async (req, res) => {
         );
 });
 
-export { registerUser, loginUser };
+const verifyUserIP = asyncHandler(async (req, res) => {
+    const { userId } = req.user;
+    const { ip } = req.body;
+    if (ip.trim() === "") {
+        throw new ApiError(401, "Provide IP Address!");
+    }
+
+    const user = await User.findOne({ _id: userId });
+    if (!user) {
+        throw new ApiError(401, "User not found!");
+    }
+
+    if (!user.verified) {
+        throw new ApiError(401, "User not verified!");
+    }
+
+    user.verifiedIPS.push({
+        ip: ip,
+        verified: true,
+    });
+
+    await user.save({ validateBeforeSave: false });
+
+    return res
+        .status(200)
+        .json(
+            new ApiResponse(
+                200,
+                { message: "IP Verified SuccessFully!", success: true },
+                "IP Verified SuccessFully!"
+            )
+        );
+});
+
+const getUser = asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+    if (!userId) {
+        throw new ApiError(401, "User not found!");
+    }
+
+    const user = await User.findById(userId).select(
+        "-password -accessToken -accessTokenId -accessTokenExpiry "
+    );
+    if (!user) {
+        throw new ApiError(401, "User not found!");
+    }
+
+    return res
+        .status(200)
+        .json(
+            new ApiResponse(200, { user: user }, "User Fetched Successfully!")
+        );
+});
+
+export { registerUser, loginUser, verifyUserIP, getUser };
