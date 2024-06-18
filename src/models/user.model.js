@@ -29,7 +29,15 @@ const userSchema = new mongoose.Schema(
             type: String,
             required: [true, "Password is required"],
         },
+        mPin: {
+            type: String,
+            default: "",
+        },
         verified: {
+            type: Boolean,
+            default: false,
+        },
+        haveCard: {
             type: Boolean,
             default: false,
         },
