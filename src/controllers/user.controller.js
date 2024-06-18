@@ -206,4 +206,45 @@ const updateUser = asyncHandler(async (req, res) => {
         );
 });
 
-export { registerUser, loginUser, verifyUserIP, getUser, updateUser };
+const updateMPIN = asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+    if (!userId) {
+        throw new ApiError(401, "User not found!");
+    }
+
+    const { mPin } = req.body;
+    if (mPin.trim() === "" || mPin.length !== 6) {
+        throw new ApiError(401, "Provide all fields!");
+    }
+
+    const user = await User.findByIdAndUpdate(
+        userId,
+        {
+            $set: {
+                mPin: {
+                    code: mPin,
+                    enabled: true,
+                },
+            },
+        },
+        {
+            new: true,
+            runValidators: true,
+        }
+    ).select("-password -accessToken -accessTokenId -accessTokenExpiry");
+
+    return res
+        .status(200)
+        .json(
+            new ApiResponse(200, { user: user }, "MPIN Updated SuccessFully!")
+        );
+});
+
+export {
+    registerUser,
+    loginUser,
+    verifyUserIP,
+    getUser,
+    updateUser,
+    updateMPIN,
+};

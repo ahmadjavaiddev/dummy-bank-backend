@@ -30,8 +30,14 @@ const userSchema = new mongoose.Schema(
             required: [true, "Password is required"],
         },
         mPin: {
-            type: String,
-            default: "",
+            code: {
+                type: String,
+                default: "",
+            },
+            enabled: {
+                type: Boolean,
+                default: false,
+            },
         },
         verified: {
             type: Boolean,
