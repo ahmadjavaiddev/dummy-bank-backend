@@ -4,9 +4,12 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { generateUniqueCard } from "../utils/cardHelpers.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
+import { createCardSchema } from "../schemas/card.schema.js";
 
 const createCard = asyncHandler(async (req, res) => {
     const userId = req.user._id;
+
+    createCardSchema.parse(req.body.code);
     const { code } = req.body;
 
     // Check if User has a card
