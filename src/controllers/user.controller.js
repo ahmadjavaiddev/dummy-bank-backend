@@ -2,9 +2,16 @@ import User from "../models/user.model.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
-import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { v4 as uuid } from "uuid";
+import argon2 from "argon2";
+import {
+    UpdateMPINSchema,
+    loginSchema,
+    registerSchema,
+    updateUserSchema,
+} from "../schemas/validationSchemas.js";
+import { UserSelectSecureSchema } from "../constants.js";
 
 const cookieOptions = {
     httpOnly: true,
@@ -40,21 +47,16 @@ const generateToken = async (userId) => {
 };
 
 const registerUser = asyncHandler(async (req, res) => {
+    registerSchema.parse(req.body);
+
     const { firstName, lastName, userName, email, password } = req.body;
-    if (
-        [firstName, lastName, userName, email, password].some(
-            (field) => field.trim() === ""
-        )
-    ) {
-        throw new ApiError(401, "Provide all fields!");
-    }
 
     const existingUser = await User.findOne({ userName, email });
     if (existingUser) {
         throw new ApiError(401, "User already exists!");
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await argon2.hash(password);
 
     const user = await User.create({
         firstName: firstName,
@@ -67,7 +69,7 @@ const registerUser = asyncHandler(async (req, res) => {
     const accessToken = await generateToken(user._id);
 
     const newUser = await User.findById(user._id).select(
-        "-password -accessToken -accessTokenId -accessTokenExpiry "
+        UserSelectSecureSchema
     );
 
     return res
@@ -83,6 +85,8 @@ const registerUser = asyncHandler(async (req, res) => {
 });
 
 const loginUser = asyncHandler(async (req, res) => {
+    loginSchema.parse(req.body);
+
     const { email, password } = req.body;
     if (email.trim() === "" || password.trim() === "") {
         throw new ApiError(401, "Provide all fields!");
@@ -93,7 +97,8 @@ const loginUser = asyncHandler(async (req, res) => {
         throw new ApiError(401, "User not found!");
     }
 
-    const isValidPassword = await bcrypt.compare(password, user.password);
+    const isValidPassword = await argon2.verify(user.password, password);
+
     if (!isValidPassword) {
         throw new ApiError(401, "Invalid password!");
     }
@@ -101,7 +106,7 @@ const loginUser = asyncHandler(async (req, res) => {
     const accessToken = await generateToken(user._id);
 
     const loggedInUser = await User.findById(user._id).select(
-        "-password -accessToken -accessTokenId -accessTokenExpiry"
+        UserSelectSecureSchema
     );
 
     return res
@@ -176,10 +181,9 @@ const updateUser = asyncHandler(async (req, res) => {
         throw new ApiError(401, "User not found!");
     }
 
+    updateUserSchema.parse(req.body);
+
     const { firstName, lastName } = req.body;
-    if ([firstName, lastName].some((field) => field.trim() === "")) {
-        throw new ApiError(401, "Provide all fields!");
-    }
 
     const user = await User.findByIdAndUpdate(
         userId,
@@ -193,7 +197,7 @@ const updateUser = asyncHandler(async (req, res) => {
             new: true,
             runValidators: true,
         }
-    ).select("-password -accessToken -accessTokenId -accessTokenExpiry");
+    ).select(UserSelectSecureSchema);
 
     return res
         .status(200)
@@ -211,7 +215,7 @@ const updateMPIN = asyncHandler(async (req, res) => {
     if (!userId) {
         throw new ApiError(401, "User not found!");
     }
-
+    UpdateMPINSchema.parse(req.body);
     const { mPin } = req.body;
     if (mPin.trim() === "" || mPin.length !== 6) {
         throw new ApiError(401, "Provide all fields!");
@@ -231,7 +235,7 @@ const updateMPIN = asyncHandler(async (req, res) => {
             new: true,
             runValidators: true,
         }
-    ).select("-password -accessToken -accessTokenId -accessTokenExpiry");
+    ).select(UserSelectSecureSchema);
 
     return res
         .status(200)
