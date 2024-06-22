@@ -215,11 +215,9 @@ const updateMPIN = asyncHandler(async (req, res) => {
     if (!userId) {
         throw new ApiError(401, "User not found!");
     }
-    UpdateMPINSchema.parse(req.body);
+
+    UpdateMPINSchema.parse(req.body.mPin);
     const { mPin } = req.body;
-    if (mPin.trim() === "" || mPin.length !== 6) {
-        throw new ApiError(401, "Provide all fields!");
-    }
 
     const user = await User.findByIdAndUpdate(
         userId,
