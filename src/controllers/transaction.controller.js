@@ -3,6 +3,10 @@ import Transaction from "../models/transaction.model.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import User from "../models/user.model.js";
+import {
+    requestMoneySchema,
+    sendMoneySchema,
+} from "../schemas/transaction.schema.js";
 
 const sendMoney = asyncHandler(async (req, res) => {
     const senderId = req.user._id;
@@ -10,15 +14,20 @@ const sendMoney = asyncHandler(async (req, res) => {
         throw new ApiError(401, "You must be logged in to send money!");
     }
 
+    sendMoneySchema.parse(req.body);
     const { receiverEmail, amount, description } = req.body;
-    if (!receiverEmail || !amount) {
-        throw new ApiError(401, "Missing required fields!");
-    }
 
     // Check if the amount is valid
-    const amountToSend = Number(amount);
-    if (isNaN(amountToSend) || amountToSend <= 0) {
+    if (isNaN(amount) || amount <= 0) {
         throw new ApiError(400, "Invalid Amount!");
+    }
+
+    // Check If Receiver Exists
+    const checkReceiverEmail = await User.findOne({
+        email: receiverEmail,
+    });
+    if (!checkReceiverEmail || checkReceiverEmail.verified === false) {
+        throw new ApiError(400, "Invalid User Email! OR User is not verified!");
     }
 
     // Check if the user has enough balance
@@ -28,8 +37,8 @@ const sendMoney = asyncHandler(async (req, res) => {
     }
     if (
         sender.balance <= 0 ||
-        sender.balance < amountToSend ||
-        sender.balance - amountToSend < 0
+        sender.balance < amount ||
+        sender.balance - amount < 0
     ) {
         throw new ApiError(400, "Insufficient Balance!");
     }
@@ -44,18 +53,18 @@ const sendMoney = asyncHandler(async (req, res) => {
     }
 
     // Update the balance of the sender
-    sender.balance = sender.balance - amountToSend;
+    sender.balance = sender.balance - amount;
     await sender.save();
 
     // Update the balance of the receiver
-    receiver.balance = receiver.balance + amountToSend;
+    receiver.balance = receiver.balance + amount;
     await receiver.save();
 
     // Create the transaction
     const transaction = await Transaction.create({
         from: senderId,
         to: receiver._id,
-        amount: amountToSend,
+        amount: amount,
         description: description,
         status: "COMPLETED",
         type: "TRANSFER",
@@ -81,14 +90,11 @@ const requestMoney = asyncHandler(async (req, res) => {
         throw new ApiError(401, "You must be logged in to request money!");
     }
 
+    requestMoneySchema.parse(req.body);
     const { senderEmail, amount, description } = req.body;
-    if (!senderEmail || !amount) {
-        throw new ApiError(401, "Missing required fields!");
-    }
 
     // Check if the amount is valid
-    const amountToSend = Number(amount);
-    if (isNaN(amountToSend) || amountToSend <= 0) {
+    if (isNaN(amount) || amount <= 0) {
         throw new ApiError(401, "Invalid Amount!");
     }
 
@@ -105,7 +111,7 @@ const requestMoney = asyncHandler(async (req, res) => {
     const transaction = await Transaction.create({
         from: findUserToRequest._id,
         to: userId,
-        amount: amountToSend,
+        amount: amount,
         description: description,
         status: "PENDING",
         type: "REQUEST",
