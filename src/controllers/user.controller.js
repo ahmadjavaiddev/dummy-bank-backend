@@ -10,7 +10,7 @@ import {
     loginSchema,
     registerSchema,
     updateUserSchema,
-} from "../schemas/validationSchemas.js";
+} from "../schemas/user.schema.js";
 import { UserSelectSecureSchema, cookieOptions } from "../constants.js";
 
 const generateToken = async (userId) => {
