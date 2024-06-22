@@ -43,4 +43,11 @@ app.use("/api/v1/users", userRouter);
 app.use("/api/v1/transactions", transactionRouter);
 app.use("/api/v1/card", cardRouter);
 
+app.get("/health", (req, res) => {
+    return res.status(201).json({
+        message: "Server Is Running!",
+        success: true,
+    });
+});
+
 export default app;
