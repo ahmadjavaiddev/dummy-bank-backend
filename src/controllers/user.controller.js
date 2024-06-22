@@ -11,12 +11,7 @@ import {
     registerSchema,
     updateUserSchema,
 } from "../schemas/validationSchemas.js";
-import { UserSelectSecureSchema } from "../constants.js";
-
-const cookieOptions = {
-    httpOnly: true,
-    secure: true,
-};
+import { UserSelectSecureSchema, cookieOptions } from "../constants.js";
 
 const generateToken = async (userId) => {
     try {
@@ -48,7 +43,6 @@ const generateToken = async (userId) => {
 
 const registerUser = asyncHandler(async (req, res) => {
     registerSchema.parse(req.body);
-
     const { firstName, lastName, userName, email, password } = req.body;
 
     const existingUser = await User.findOne({ userName, email });
@@ -86,11 +80,7 @@ const registerUser = asyncHandler(async (req, res) => {
 
 const loginUser = asyncHandler(async (req, res) => {
     loginSchema.parse(req.body);
-
     const { email, password } = req.body;
-    if (email.trim() === "" || password.trim() === "") {
-        throw new ApiError(401, "Provide all fields!");
-    }
 
     const user = await User.findOne({ email, verified: true });
     if (!user) {
@@ -162,7 +152,7 @@ const getUser = asyncHandler(async (req, res) => {
     }
 
     const user = await User.findOne({ _id: userId, verified: true }).select(
-        "-password -accessToken -accessTokenId -accessTokenExpiry "
+        "-password -accessToken -accessTokenId -accessTokenExpiry"
     );
     if (!user) {
         throw new ApiError(401, "User not found!");
@@ -182,7 +172,6 @@ const updateUser = asyncHandler(async (req, res) => {
     }
 
     updateUserSchema.parse(req.body);
-
     const { firstName, lastName } = req.body;
 
     const user = await User.findByIdAndUpdate(
