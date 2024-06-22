@@ -3,6 +3,9 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import logger from "./utils/logger.js";
 import morgan from "morgan";
+import fs from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 
 const app = express();
 
@@ -48,6 +51,23 @@ app.get("/health", (req, res) => {
         message: "Server Is Running!",
         success: true,
     });
+});
+
+app.get("/empty-logs", async (req, res) => {
+    try {
+        const __filename = fileURLToPath(import.meta.url);
+        const __dirname = dirname(__filename);
+        const filePath = join(__dirname, "..", "app.log");
+
+        fs.unlinkSync(filePath);
+
+        return res.status(201).json({
+            message: "Logs Removed SuccessFully!",
+            success: true,
+        });
+    } catch (error) {
+        console.log("Error while removing the logs ::", error.message);
+    }
 });
 
 export default app;
