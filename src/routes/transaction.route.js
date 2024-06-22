@@ -1,6 +1,5 @@
 import express from "express";
 import {
-    analytics,
     getTransactions,
     requestMoney,
     requestedTransactions,
@@ -16,6 +15,5 @@ router.get("/", getTransactions);
 router.post("/send", sendMoney);
 router.post("/request", requestMoney);
 router.get("/requested", requestedTransactions);
-router.get("/analytics", analytics);
 
 export default router;
