@@ -12,6 +12,7 @@ import {
     updateUserSchema,
 } from "../schemas/user.schema.js";
 import { UserSelectSecureSchema, cookieOptions } from "../constants.js";
+import { redisClient } from "../utils/redis.js";
 
 const generateToken = async (userId) => {
     try {
@@ -168,12 +169,27 @@ const getUser = asyncHandler(async (req, res) => {
         throw new ApiError(401, "User not found!");
     }
 
+    const cachedUser = await redisClient.get(`user:${userId}`);
+    if (cachedUser) {
+        return res
+            .status(200)
+            .json(
+                new ApiResponse(
+                    200,
+                    { user: JSON.parse(cachedUser) },
+                    "User Fetched Successfully!"
+                )
+            );
+    }
+
     const user = await User.findOne({ _id: userId, verified: true }).select(
-        "-password -accessToken -accessTokenId -accessTokenExpiry"
+        UserSelectSecureSchema
     );
     if (!user) {
         throw new ApiError(401, "User not found!");
     }
+
+    await redisClient.set(`user:${userId}`, JSON.stringify(user));
 
     return res
         .status(200)
@@ -204,6 +220,7 @@ const updateUser = asyncHandler(async (req, res) => {
             runValidators: true,
         }
     ).select(UserSelectSecureSchema);
+    await redisClient.del(`user:${userId}`);
 
     return res
         .status(200)
