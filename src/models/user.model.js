@@ -62,9 +62,16 @@ const userSchema = new mongoose.Schema(
                         type: Boolean,
                         default: false,
                     },
+                    expiry: {
+                        type: Date,
+                    },
                 },
             },
         ],
+        ipVerificationCode: {
+            type: String,
+            default: null,
+        },
         accessToken: {
             type: String,
         },

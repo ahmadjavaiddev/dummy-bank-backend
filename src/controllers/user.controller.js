@@ -112,25 +112,42 @@ const loginUser = asyncHandler(async (req, res) => {
 });
 
 const verifyUserIP = asyncHandler(async (req, res) => {
-    const { userId } = req.user;
-    const { ip } = req.body;
-    if (ip.trim() === "") {
-        throw new ApiError(401, "Provide IP Address!");
+    const { verificationCode } = req.body;
+    const ipAddress = req.ip;
+
+    if (ipAddress.trim() === "") {
+        throw new ApiError(401, "IP Address is not valid!");
     }
 
-    const user = await User.findOne({ _id: userId });
+    const user = await User.findOne({ ipVerificationCode: verificationCode });
     if (!user) {
         throw new ApiError(401, "User not found!");
     }
 
-    if (!user.verified) {
-        throw new ApiError(401, "User not verified!");
+    if (!user.verified || user.ipVerificationCode !== verificationCode) {
+        throw new ApiError(401, "User not verified! OR Code is invalid!");
     }
 
-    user.verifiedIPS.push({
-        ip: ip,
-        verified: true,
-    });
+    const uniqueIpAddresses = user.verifiedIPS.filter(
+        (verifiedIP) => verifiedIP.ip === ipAddress
+    );
+
+    if (uniqueIpAddresses.length > 0) {
+        user.verifiedIPS = user.verifiedIPS.map((verifiedIp) => {
+            if (verifiedIp.ip === ipAddress) {
+                verifiedIp.expiry = Date.now() + 1000 * 60 * 60 * 24 * 3; // 3 days in milliseconds
+            }
+            return verifiedIp;
+        });
+    } else {
+        user.verifiedIPS.push({
+            ip: ipAddress,
+            verified: true,
+            expiry: Date.now() + 1000 * 60 * 60 * 24 * 3, // 3 days in milliseconds
+        });
+    }
+
+    user.ipVerificationCode = "";
 
     await user.save({ validateBeforeSave: false });
 
@@ -139,8 +156,8 @@ const verifyUserIP = asyncHandler(async (req, res) => {
         .json(
             new ApiResponse(
                 200,
-                { message: "IP Verified SuccessFully!", success: true },
-                "IP Verified SuccessFully!"
+                { message: "IP Verified Successfully!", success: true },
+                "IP Verified Successfully!"
             )
         );
 });
