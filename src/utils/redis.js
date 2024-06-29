@@ -14,4 +14,13 @@ const connectRedis = async () => {
     }
 };
 
+redisClient.on("error", (err) => {
+    console.error("Redis error:", err);
+});
+
+redisClient.on("end", () => {
+    console.log("Redis connection closed. Attempting to reconnect...");
+    setTimeout(connectRedis, 1000); // Attempt to reconnect after 1 second
+});
+
 export { connectRedis, redisClient };
