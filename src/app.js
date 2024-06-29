@@ -6,11 +6,10 @@ import morgan from "morgan";
 import fs from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { redisClient } from "./utils/redis.js";
 
 const app = express();
-
 app.use(cookieParser());
-
 app.use(
     cors({
         origin: "*",
@@ -21,7 +20,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 const morganFormat = ":method :url :status :response-time ms";
-
 app.use(
     morgan(morganFormat, {
         stream: {
@@ -46,11 +44,19 @@ app.use("/api/v1/users", userRouter);
 app.use("/api/v1/transactions", transactionRouter);
 app.use("/api/v1/card", cardRouter);
 
-app.get("/health", (req, res) => {
-    return res.status(201).json({
-        message: "Server Is Running!",
-        success: true,
-    });
+app.get("/health", async (req, res) => {
+    try {
+        await redisClient.set("user:1", "new-user");
+        const getUser = await redisClient.get("user:1");
+
+        return res.status(201).json({
+            user: getUser,
+            message: "Server Is Running!",
+            success: true,
+        });
+    } catch (error) {
+        console.log("Error In Health Route ::", error);
+    }
 });
 
 app.get("/empty-logs", async (req, res) => {
