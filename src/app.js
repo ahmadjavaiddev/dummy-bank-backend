@@ -50,7 +50,6 @@ app.get("/health", async (req, res) => {
         // const getUser = await redisClient.get("user:1");
 
         return res.status(201).json({
-            user: getUser,
             message: "Server Is Running!",
             success: true,
         });
