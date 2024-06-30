@@ -55,7 +55,6 @@ const registerUser = asyncHandler(async (req, res) => {
     }
 
     const hashedPassword = await argon2.hash(password);
-
     const user = await User.create({
         firstName: firstName,
         lastName: lastName,
@@ -69,6 +68,13 @@ const registerUser = asyncHandler(async (req, res) => {
     const newUser = await User.findById(user._id).select(
         UserSelectSecureSchema
     );
+
+    await emailQueue.add("sendEmail", {
+        userName: newUser.userName,
+        email: newUser.email,
+        type: "Verify Your Email!",
+        verificationCode: newUser.verificationCode,
+    });
 
     return res
         .cookie("accessToken", accessToken, cookieOptions)
@@ -105,7 +111,7 @@ const loginUser = asyncHandler(async (req, res) => {
     await emailQueue.add("sendEmail", {
         userName: loggedInUser.userName,
         email: loggedInUser.email,
-        type: "Verification",
+        type: "Verify Your Login!",
         verificationCode: loggedInUser.verificationCode,
     });
 
