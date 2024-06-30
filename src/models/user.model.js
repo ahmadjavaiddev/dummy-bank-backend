@@ -43,6 +43,9 @@ const userSchema = new mongoose.Schema(
             type: Boolean,
             default: false,
         },
+        verificationCode: {
+            type: String,
+        },
         haveCard: {
             type: Boolean,
             default: false,

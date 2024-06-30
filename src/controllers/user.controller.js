@@ -13,11 +13,13 @@ import {
 } from "../schemas/user.schema.js";
 import { UserSelectSecureSchema, cookieOptions } from "../constants.js";
 import { redisClient } from "../utils/redis.js";
+import { emailQueue } from "../utils/Queue.js";
 
 const generateToken = async (userId) => {
     try {
         const accessTokenId = `${uuid()}-${Date.now()}`;
         const accessTokenExpiry = new Date(Date.now() + 1000 * 60 * 60);
+        const verificationCode = Math.floor(100000 + Math.random() * 900000);
 
         const accessToken = await jwt.sign(
             {
@@ -34,6 +36,7 @@ const generateToken = async (userId) => {
         user.accessToken = accessToken;
         user.accessTokenId = accessTokenId;
         user.accessTokenExpiry = accessTokenExpiry;
+        user.verificationCode = verificationCode;
         await user.save({ validateBeforeSave: false });
 
         return accessToken;
@@ -89,7 +92,6 @@ const loginUser = asyncHandler(async (req, res) => {
     }
 
     const isValidPassword = await argon2.verify(user.password, password);
-
     if (!isValidPassword) {
         throw new ApiError(401, "Invalid password!");
     }
@@ -99,6 +101,13 @@ const loginUser = asyncHandler(async (req, res) => {
     const loggedInUser = await User.findById(user._id).select(
         UserSelectSecureSchema
     );
+
+    await emailQueue.add("sendEmail", {
+        userName: loggedInUser.userName,
+        email: loggedInUser.email,
+        type: "Verification",
+        verificationCode: loggedInUser.verificationCode,
+    });
 
     return res
         .cookie("accessToken", accessToken, cookieOptions)
