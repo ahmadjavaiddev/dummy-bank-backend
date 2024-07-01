@@ -6,7 +6,6 @@ import morgan from "morgan";
 import fs from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
-import { redisClient } from "./utils/redis.js";
 
 const app = express();
 app.use(cookieParser());
@@ -46,9 +45,6 @@ app.use("/api/v1/card", cardRouter);
 
 app.get("/health", async (req, res) => {
     try {
-        // await redisClient.set("user:1", "new-user");
-        // const getUser = await redisClient.get("user:1");
-
         return res.status(201).json({
             message: "Server Is Running!",
             success: true,
