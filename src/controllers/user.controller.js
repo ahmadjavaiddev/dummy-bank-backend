@@ -150,7 +150,7 @@ const verifyUser = asyncHandler(async (req, res) => {
         verificationCode.trim() === "" ||
         type.trim() === "" ||
         !userId ||
-        !!verificationCode ||
+        !verificationCode ||
         !type
     ) {
         throw new ApiError(
