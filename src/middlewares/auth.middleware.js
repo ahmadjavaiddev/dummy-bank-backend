@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import User from "../models/user.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { UserSelectSecureSchema } from "../constants.js";
+import { emailQueue } from "../utils/Queue.js";
 
 const verifyJWT = async (req, _, next) => {
     try {
@@ -33,12 +34,64 @@ const verifyJWT = async (req, _, next) => {
             return next(new ApiError(401, "Invalid authentication token."));
         }
 
-        // Check If the IP Address is Valid OR Not
-        const verifiedIp = user.verifiedIPS.filter(
-            (item) => item.ip === req.ip && item.expiry < Date.now()
-        );
-        if (verifiedIp.length > 0) {
-            return next(new ApiError(401, "IP Address is not verified"));
+        const verifiedIp = user.lastLoginIP;
+
+        // Check If the IP Address is Valid OR Not. If IP Address Is Valid Then Skip The IP Verification Part
+        if (
+            !verifiedIp ||
+            !verifiedIp.ip ||
+            !verifiedIp.verified ||
+            verifiedIp.expiry < Date.now()
+        ) {
+            // Check If Email Already Sent Return Back
+            if (
+                user.ipVerifyEmail.sent ||
+                user.ipVerifyEmail.expiry < Date.now()
+            ) {
+                console.log("Already Sent!");
+                return next(
+                    new ApiError(
+                        401,
+                        "IP Address is not verified. Please check your email to verify your IP"
+                    )
+                );
+            }
+
+            // Generate Verification Code
+            const verificationCode = Math.floor(
+                100000 + Math.random() * 900000
+            );
+            const requestedIpAddress = req.ip;
+
+            // Set User IP Details In DB
+            user.lastLoginIP = {
+                ip: requestedIpAddress,
+                verified: false,
+                code: verificationCode,
+                codeExpiry: new Date(Date.now() + 1 * 1000 * 60 * 60),
+            };
+            user.ipVerifyEmail.sent = true;
+            user.ipVerifyEmail.expiry = new Date(
+                Date.now() + 1 * 1000 * 60 * 15
+            );
+            await user.save();
+
+            // Add Email To Queue
+            await emailQueue.add("sendIpVerificationEmail", {
+                userName: user.userName,
+                email: user.email,
+                type: `IP`,
+                subject: `Verify Your IP Address`,
+                verificationCode: verificationCode,
+            });
+
+            // Alert The User
+            return next(
+                new ApiError(
+                    401,
+                    "IP Address is not verified. Please check your email to verify your IP"
+                )
+            );
         }
 
         // Fetch User Without The Some Important Fields
