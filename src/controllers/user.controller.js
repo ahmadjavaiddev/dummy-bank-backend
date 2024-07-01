@@ -36,6 +36,7 @@ const generateToken = async (userId, type) => {
         user.accessToken = accessToken;
         user.accessTokenId = accessTokenId;
         user.accessTokenExpiry = accessTokenExpiry;
+
         if (type === "LOGIN") {
             user.verificationCode = {
                 code: verificationCode,
@@ -82,10 +83,11 @@ const registerUser = asyncHandler(async (req, res) => {
         UserSelectSecureSchema
     );
 
-    await emailQueue.add("sendEmail", {
+    await emailQueue.add("sendRegisterEmail", {
         userName: newUser.userName,
         email: newUser.email,
-        type: `Verify Your Email to continue ${newUser.verificationCode.type}`,
+        type: `REGISTER`,
+        subject: `Verify Your Email to Continue`,
         verificationCode: newUser.verificationCode.code,
     });
 
@@ -96,7 +98,7 @@ const registerUser = asyncHandler(async (req, res) => {
             new ApiResponse(
                 200,
                 { user: newUser },
-                "User Registered Successfully!"
+                "Please check your email to verify your account!"
             )
         );
 });
@@ -121,10 +123,11 @@ const loginUser = asyncHandler(async (req, res) => {
         UserSelectSecureSchema
     );
 
-    await emailQueue.add("sendEmail", {
+    await emailQueue.add("sendLoginEmail", {
         userName: loggedInUser.userName,
         email: loggedInUser.email,
-        type: `${loggedInUser.verificationCode.type} Verification!`,
+        type: `LOGIN`,
+        subject: `Login Verification`,
         verificationCode: loggedInUser.verificationCode.code,
     });
 
@@ -135,48 +138,36 @@ const loginUser = asyncHandler(async (req, res) => {
             new ApiResponse(
                 200,
                 { user: loggedInUser },
-                "User Login Successfully!"
+                "Please check your email for verification code!"
             )
         );
 });
 
 const verifyUserIP = asyncHandler(async (req, res) => {
-    const { verificationCode } = req.body;
+    const { email, verificationCode } = req.body;
     const ipAddress = req.ip;
 
     if (ipAddress.trim() === "") {
         throw new ApiError(401, "IP Address is not valid!");
     }
 
-    const user = await User.findOne({ ipVerificationCode: verificationCode });
-    if (!user) {
-        throw new ApiError(401, "User not found!");
+    const user = await User.findOne({ email });
+    if (
+        !user ||
+        !user.verified ||
+        user.lastLoginIP.ip !== ipAddress ||
+        user.lastLoginIP.code !== verificationCode ||
+        user.lastLoginIP.codeExpiry < Date.now()
+    ) {
+        throw new ApiError(401, "Invalid Verification Code!");
     }
 
-    if (!user.verified || user.ipVerificationCode !== verificationCode) {
-        throw new ApiError(401, "User not verified! OR Code is invalid!");
-    }
-
-    const uniqueIpAddresses = user.verifiedIPS.filter(
-        (verifiedIP) => verifiedIP.ip === ipAddress
-    );
-
-    if (uniqueIpAddresses.length > 0) {
-        user.verifiedIPS = user.verifiedIPS.map((verifiedIp) => {
-            if (verifiedIp.ip === ipAddress) {
-                verifiedIp.expiry = Date.now() + 1000 * 60 * 60 * 24 * 3; // 3 days in milliseconds
-            }
-            return verifiedIp;
-        });
-    } else {
-        user.verifiedIPS.push({
-            ip: ipAddress,
-            verified: true,
-            expiry: Date.now() + 1000 * 60 * 60 * 24 * 3, // 3 days in milliseconds
-        });
-    }
-
-    user.ipVerificationCode = "";
+    user.lastLoginIP.code = "";
+    user.lastLoginIP.verified = true;
+    user.lastLoginIP.codeExpiry = "";
+    user.lastLoginIP.expiry = new Date(Date.now() + 1 * 1000 * 60 * 60 * 3); // 3 Days Expiry
+    user.ipVerifyEmail.sent = false;
+    user.ipVerifyEmail.expiry = "";
 
     await user.save({ validateBeforeSave: false });
 
@@ -293,6 +284,85 @@ const updateMPIN = asyncHandler(async (req, res) => {
         );
 });
 
+const forgetPassword = asyncHandler(async (req, res) => {
+    const { email } = req.body;
+    if (!email || email.trim() === "") {
+        throw new ApiError(401, "Email is Required!");
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+        throw new ApiError(401, "User Not Found!");
+    }
+
+    const resetToken = `${
+        Date.now() * Math.floor(Math.random() * 100000)
+    }-${uuid()}-${Date.now()}`;
+
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordTokenExpiry = new Date(Date.now() + 3600000);
+
+    await user.save({ validateBeforeSave: false });
+
+    await emailQueue.add("sendForgotEmail", {
+        userName: user.userName,
+        email: user.email,
+        type: `FORGOT`,
+        subject: `Forgot Password Request`,
+        verificationCode: resetToken,
+    });
+
+    return res
+        .status(201)
+        .json(
+            new ApiResponse(
+                201,
+                null,
+                "Please Check Your Email Inbox To Reset Your Password!"
+            )
+        );
+});
+
+const resetpassword = asyncHandler(async (req, res) => {
+    const { password, resetToken } = req.body;
+    if (
+        !password ||
+        password.trim() === "" ||
+        !resetToken ||
+        password.trim() === ""
+    ) {
+        throw new ApiError(401, "Password and Token is Required!");
+    }
+
+    const user = await User.findOne({ resetPasswordToken: resetToken });
+    if (!user || user.resetPasswordTokenExpiry < Date.now()) {
+        throw new ApiError(401, "Invalid Token!");
+    }
+
+    const hashedPassword = await argon2.hash(password);
+    user.password = hashedPassword;
+    user.resetPasswordToken = "";
+    user.resetPasswordTokenExpiry = "";
+    await user.save({ validateBeforeSave: false });
+
+    await emailQueue.add("sendResetEmail", {
+        userName: user.userName,
+        email: user.email,
+        type: `RESET`,
+        subject: `Your Password has been changed`,
+    });
+
+    return res
+        .status(201)
+        .json(
+            new ApiResponse(
+                201,
+                null,
+                "Your password has been changed successfully!"
+            )
+        );
+});
+
 export {
     registerUser,
     loginUser,
@@ -300,4 +370,6 @@ export {
     getUser,
     updateUser,
     updateMPIN,
+    forgetPassword,
+    resetpassword,
 };

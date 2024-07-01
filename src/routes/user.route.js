@@ -6,6 +6,8 @@ import {
     registerUser,
     updateUser,
     verifyUserIP,
+    forgetPassword,
+    resetpassword,
 } from "../controllers/user.controller.js";
 import verifyJWT from "../middlewares/auth.middleware.js";
 
@@ -17,5 +19,7 @@ router.post("/verify-ip", verifyUserIP);
 router.get("/user", verifyJWT, getUser);
 router.patch("/user", verifyJWT, updateUser);
 router.post("/update-mpin", verifyJWT, updateMPIN);
+router.post("/forgot-password", forgetPassword);
+router.post("/reset-password", resetpassword);
 
 export default router;
