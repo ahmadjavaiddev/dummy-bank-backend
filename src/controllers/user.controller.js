@@ -143,15 +143,20 @@ const loginUser = asyncHandler(async (req, res) => {
         );
 });
 
-const verifyLogin = asyncHandler(async (req, res) => {
-    const { userId, verificationCode } = req.body;
+const verifyUser = asyncHandler(async (req, res) => {
+    const { userId, verificationCode, type } = req.body;
     if (
         userId.trim() === "" ||
         verificationCode.trim() === "" ||
+        type.trim() === "" ||
         !userId ||
-        !verificationCode
+        !!verificationCode ||
+        !type
     ) {
-        throw new ApiError(401, "User ID and Verification Code is Required!");
+        throw new ApiError(
+            401,
+            "User ID, Type and Verification Code is Required!"
+        );
     }
 
     const user = await User.findById(userId);
@@ -160,13 +165,14 @@ const verifyLogin = asyncHandler(async (req, res) => {
         !user.verified ||
         user.verificationCode.code !== verificationCode ||
         user.verificationCode.expiry < Date.now() ||
-        user.verificationCode.type !== "LOGIN"
+        user.verificationCode.type !== type
     ) {
         throw new ApiError(401, "Invalid Verification Code!");
     }
 
     user.verificationCode.code = "";
     user.verificationCode.expiry = "";
+    user.verificationCode.type = "";
 
     await user.save({ validateBeforeSave: false });
 
@@ -175,8 +181,8 @@ const verifyLogin = asyncHandler(async (req, res) => {
         .json(
             new ApiResponse(
                 200,
-                { message: "Login Verified Successfully!", success: true },
-                "Login Verified Successfully!"
+                { message: "User Verified Successfully!", success: true },
+                "User Verified Successfully!"
             )
         );
 });
@@ -404,7 +410,7 @@ const resetpassword = asyncHandler(async (req, res) => {
 export {
     registerUser,
     loginUser,
-    verifyLogin,
+    verifyUser,
     verifyUserIP,
     getUser,
     updateUser,
