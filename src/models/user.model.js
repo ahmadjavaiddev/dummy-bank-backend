@@ -56,6 +56,12 @@ const userSchema = new mongoose.Schema(
                 type: Date,
             },
         },
+        resetPasswordToken: {
+            type: String,
+        },
+        resetPasswordTokenExpiry: {
+            type: Date,
+        },
         haveCard: {
             type: Boolean,
             default: false,
@@ -65,25 +71,32 @@ const userSchema = new mongoose.Schema(
             default: "user",
             enum: ["user", "admin"],
         },
-        verifiedIPS: [
-            {
-                type: {
-                    ip: {
-                        type: String,
-                    },
-                    verified: {
-                        type: Boolean,
-                        default: false,
-                    },
-                    expiry: {
-                        type: Date,
-                    },
-                },
+        lastLoginIP: {
+            ip: {
+                type: String,
             },
-        ],
-        ipVerificationCode: {
-            type: String,
-            default: null,
+            verified: {
+                type: Boolean,
+                default: false,
+            },
+            code: {
+                type: String,
+            },
+            codeExpiry: {
+                type: Date,
+            },
+            expiry: {
+                type: Date,
+            },
+        },
+        ipVerifyEmail: {
+            sent: {
+                type: Boolean,
+                default: false,
+            },
+            expiry: {
+                type: Date,
+            },
         },
         accessToken: {
             type: String,
