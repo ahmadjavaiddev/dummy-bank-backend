@@ -15,7 +15,7 @@ import { UserSelectSecureSchema, cookieOptions } from "../constants.js";
 import { redisClient } from "../utils/redis.js";
 import { emailQueue } from "../utils/Queue.js";
 
-const generateToken = async (userId) => {
+const generateToken = async (userId, type) => {
     try {
         const accessTokenId = `${uuid()}-${Date.now()}`;
         const accessTokenExpiry = new Date(Date.now() + 1000 * 60 * 60);
@@ -36,7 +36,20 @@ const generateToken = async (userId) => {
         user.accessToken = accessToken;
         user.accessTokenId = accessTokenId;
         user.accessTokenExpiry = accessTokenExpiry;
-        user.verificationCode = verificationCode;
+        if (type === "LOGIN") {
+            user.verificationCode = {
+                code: verificationCode,
+                type: "LOGIN",
+                expiry: new Date(Date.now() + 1000 * 60 * 60),
+            };
+        } else {
+            user.verificationCode = {
+                code: verificationCode,
+                type: "REGISTER",
+                expiry: new Date(Date.now() + 1000 * 60 * 60),
+            };
+        }
+
         await user.save({ validateBeforeSave: false });
 
         return accessToken;
@@ -63,7 +76,7 @@ const registerUser = asyncHandler(async (req, res) => {
         password: hashedPassword,
     });
 
-    const accessToken = await generateToken(user._id);
+    const accessToken = await generateToken(user._id, "REGISTER");
 
     const newUser = await User.findById(user._id).select(
         UserSelectSecureSchema
@@ -72,8 +85,8 @@ const registerUser = asyncHandler(async (req, res) => {
     await emailQueue.add("sendEmail", {
         userName: newUser.userName,
         email: newUser.email,
-        type: "Verify Your Email!",
-        verificationCode: newUser.verificationCode,
+        type: `Verify Your Email to continue ${newUser.verificationCode.type}`,
+        verificationCode: newUser.verificationCode.code,
     });
 
     return res
@@ -102,7 +115,7 @@ const loginUser = asyncHandler(async (req, res) => {
         throw new ApiError(401, "Invalid password!");
     }
 
-    const accessToken = await generateToken(user._id);
+    const accessToken = await generateToken(user._id, "LOGIN");
 
     const loggedInUser = await User.findById(user._id).select(
         UserSelectSecureSchema
@@ -111,8 +124,8 @@ const loginUser = asyncHandler(async (req, res) => {
     await emailQueue.add("sendEmail", {
         userName: loggedInUser.userName,
         email: loggedInUser.email,
-        type: "Verify Your Login!",
-        verificationCode: loggedInUser.verificationCode,
+        type: `${loggedInUser.verificationCode.type} Verification!`,
+        verificationCode: loggedInUser.verificationCode.code,
     });
 
     return res

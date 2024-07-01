@@ -44,7 +44,17 @@ const userSchema = new mongoose.Schema(
             default: false,
         },
         verificationCode: {
-            type: String,
+            code: {
+                type: String,
+            },
+            type: {
+                type: String,
+                default: "LOGIN",
+                enum: ["LOGIN", "REGISTER"],
+            },
+            expiry: {
+                type: Date,
+            },
         },
         haveCard: {
             type: Boolean,
