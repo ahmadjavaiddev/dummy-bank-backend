@@ -6,4 +6,5 @@ export const UserSelectSchema =
 export const cookieOptions = {
     httpOnly: true,
     secure: true,
+    sameSite: "None",
 };
