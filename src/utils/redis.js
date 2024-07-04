@@ -1,11 +1,8 @@
 import Redis from "ioredis";
 
-const redisClient = new Redis(
-    "rediss://default:AVNS_GJFnPOUrqalChrZhG3F@caching-17e11eb6-ahmadjavaiddev.f.aivencloud.com:24483",
-    {
-        maxRetriesPerRequest: null,
-    }
-);
+const redisClient = new Redis(process.env.REDIS_URI, {
+    maxRetriesPerRequest: null,
+});
 
 const connectRedis = async () => {
     try {
@@ -40,6 +37,5 @@ redisClient.on("end", () => {
     console.log("Redis connection closed. Attempting to reconnect...");
     setTimeout(connectRedis, 1000); // Attempt to reconnect after 1 second
 });
-
 
 export { connectRedis, redisClient };
