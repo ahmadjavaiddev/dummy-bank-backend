@@ -50,7 +50,7 @@ const userSchema = new mongoose.Schema(
             type: {
                 type: String,
                 default: "LOGIN",
-                enum: ["LOGIN", "REGISTER"],
+                enum: ["LOGIN", "REGISTER", "IP"],
             },
             expiry: {
                 type: Date,
@@ -78,12 +78,6 @@ const userSchema = new mongoose.Schema(
             verified: {
                 type: Boolean,
                 default: false,
-            },
-            code: {
-                type: String,
-            },
-            codeExpiry: {
-                type: Date,
             },
             expiry: {
                 type: Date,
