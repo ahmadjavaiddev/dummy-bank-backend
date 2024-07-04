@@ -15,8 +15,6 @@ const verifyJWT = async (req, _, next) => {
             return next(new ApiError(401, "Authentication token not found."));
         }
 
-        console.log("Log 1 ::", token);
-
         // Verify the token
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
@@ -25,8 +23,6 @@ const verifyJWT = async (req, _, next) => {
         if (!user) {
             return next(new ApiError(401, "Authentication failed."));
         }
-        console.log("Log 2 ::", user);
-
         // Check user verification status and token validity
         const isTokenValid = decoded.accessTokenId === user.accessTokenId;
         if (
@@ -34,12 +30,10 @@ const verifyJWT = async (req, _, next) => {
             user.accessTokenExpiry < Date.now() ||
             !isTokenValid
         ) {
-            console.log("Log 3 ::", isTokenValid);
             return next(new ApiError(401, "Invalid authentication token."));
         }
 
         const verifiedIp = user.lastLoginIP;
-        console.log("Log 4 ::", verifiedIp);
         // Check If the IP Address is Valid OR Not. If IP Address Is Valid Then Skip The IP Verification Part
         if (
             !verifiedIp ||
@@ -47,7 +41,6 @@ const verifyJWT = async (req, _, next) => {
             !verifiedIp.verified ||
             verifiedIp.expiry < Date.now()
         ) {
-            console.log("Log 5");
             // Check If Email Already Sent Return Back
             if (
                 user.ipVerifyEmail.sent ||
@@ -68,7 +61,6 @@ const verifyJWT = async (req, _, next) => {
                 100000 + Math.random() * 900000
             );
             const requestedIpAddress = req.ip;
-            console.log("Log 7 ::", requestedIpAddress);
             // Set User IP Details In DB
             user.lastLoginIP = {
                 ip: requestedIpAddress,
@@ -80,9 +72,7 @@ const verifyJWT = async (req, _, next) => {
             user.ipVerifyEmail.expiry = new Date(
                 Date.now() + 1 * 1000 * 60 * 15
             );
-            console.log("Log 8");
-            await user.save();
-            console.log("Log 9");
+            await user.save({ validateBeforeSave: false });
 
             // Add Email To Queue
             await emailQueue.add("sendIpVerificationEmail", {
@@ -92,7 +82,6 @@ const verifyJWT = async (req, _, next) => {
                 subject: `Verify Your IP Address`,
                 verificationCode: verificationCode,
             });
-            console.log("Log 10");
 
             // Alert The User
             return next(
@@ -107,7 +96,6 @@ const verifyJWT = async (req, _, next) => {
         const verifiedUser = await User.findById(user._id).select(
             UserSelectSecureSchema
         );
-        console.log("Log 11 ::", verifiedUser);
 
         // Attach the user to the request object
         req.user = verifiedUser;
