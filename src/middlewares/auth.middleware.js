@@ -1,8 +1,7 @@
 import jwt from "jsonwebtoken";
 import User from "../models/user.model.js";
 import { ApiError } from "../utils/ApiError.js";
-import { UserSelectSecureSchema } from "../constants.js";
-import { emailQueue } from "../utils/Queue.js";
+import { oneHour, sixDigit, UserSelectSecureSchema } from "../constants.js";
 
 const verifyJWT = async (req, _, next) => {
     try {
@@ -46,7 +45,6 @@ const verifyJWT = async (req, _, next) => {
                 user.ipVerifyEmail.sent ||
                 user.ipVerifyEmail.expiry < Date.now()
             ) {
-                console.log("Log 6");
                 console.log("Already Sent!");
                 return next(
                     new ApiError(
@@ -57,31 +55,26 @@ const verifyJWT = async (req, _, next) => {
             }
 
             // Generate Verification Code
-            const verificationCode = Math.floor(
-                100000 + Math.random() * 900000
-            );
-            const requestedIpAddress = req.ip;
+            const verificationCode = sixDigit;
+            const ipAddress = req.ip;
+
             // Set User IP Details In DB
-            user.lastLoginIP = {
-                ip: requestedIpAddress,
-                verified: false,
+            user.verificationCode = {
                 code: verificationCode,
-                codeExpiry: new Date(Date.now() + 1 * 1000 * 60 * 60),
+                type: "IP",
+                expiry: oneHour,
+            };
+            user.lastLoginIP = {
+                ip: ipAddress,
+                verified: false,
             };
             user.ipVerifyEmail.sent = true;
-            user.ipVerifyEmail.expiry = new Date(
-                Date.now() + 1 * 1000 * 60 * 15
-            );
+            user.ipVerifyEmail.expiry = fifteenMinutes;
             await user.save({ validateBeforeSave: false });
 
             // Add Email To Queue
-            await emailQueue.add("sendIpVerificationEmail", {
-                userName: user.userName,
-                email: user.email,
-                type: `IP`,
-                subject: `Verify Your IP Address`,
-                verificationCode: verificationCode,
-            });
+
+            await sendEmail(user.userName, user.email, "IP", verificationCode);
 
             // Alert The User
             return next(
