@@ -9,8 +9,10 @@ import {
     forgetPassword,
     resetpassword,
     verifyUser,
+    isUserVerified,
 } from "../controllers/user.controller.js";
 import verifyJWT from "../middlewares/auth.middleware.js";
+import verifyUserId from "../middlewares/verify.middleware.js";
 
 const router = express.Router();
 
@@ -23,5 +25,6 @@ router.patch("/user", verifyJWT, updateUser);
 router.post("/update-mpin", verifyJWT, updateMPIN);
 router.post("/forgot-password", forgetPassword);
 router.post("/reset-password", resetpassword);
+router.get("/check-verify-user", verifyUserId, isUserVerified);
 
 export default router;
