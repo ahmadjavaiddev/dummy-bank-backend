@@ -11,15 +11,20 @@ import {
     registerSchema,
     updateUserSchema,
 } from "../schemas/user.schema.js";
-import { UserSelectSecureSchema, cookieOptions } from "../constants.js";
+import {
+    UserSelectSecureSchema,
+    cookieOptions,
+    fifteenMinutes,
+    fiveDays,
+    oneHour,
+    sixDigit,
+} from "../constants.js";
 import { redisClient } from "../utils/redis.js";
-import { emailQueue } from "../utils/Queue.js";
+import { sendEmail } from "../utils/sendEmail.js";
 
 const generateToken = async (userId, type) => {
     try {
         const accessTokenId = `${uuid()}-${Date.now()}`;
-        const accessTokenExpiry = new Date(Date.now() + 1000 * 60 * 60);
-        const verificationCode = Math.floor(100000 + Math.random() * 900000);
 
         const accessToken = await jwt.sign(
             {
@@ -35,19 +40,19 @@ const generateToken = async (userId, type) => {
         const user = await User.findById(userId);
         user.accessToken = accessToken;
         user.accessTokenId = accessTokenId;
-        user.accessTokenExpiry = accessTokenExpiry;
+        user.accessTokenExpiry = oneHour;
 
         if (type === "LOGIN") {
             user.verificationCode = {
-                code: verificationCode,
+                code: sixDigit,
                 type: "LOGIN",
-                expiry: new Date(Date.now() + 1000 * 60 * 60),
+                expiry: oneHour,
             };
         } else {
             user.verificationCode = {
-                code: verificationCode,
+                code: sixDigit,
                 type: "REGISTER",
-                expiry: new Date(Date.now() + 1000 * 60 * 60),
+                expiry: oneHour,
             };
         }
 
@@ -83,13 +88,13 @@ const registerUser = asyncHandler(async (req, res) => {
         UserSelectSecureSchema
     );
 
-    await emailQueue.add("sendRegisterEmail", {
-        userName: newUser.userName,
-        email: newUser.email,
-        type: `REGISTER`,
-        subject: `Verify Your Email to Continue`,
-        verificationCode: newUser.verificationCode.code,
-    });
+    // Add Email To Queue
+    await sendEmail(
+        newUser.userName,
+        newUser.email,
+        "REGISTER",
+        newUser.verificationCode.code
+    );
 
     return res
         .cookie("accessToken", accessToken, cookieOptions)
@@ -123,13 +128,12 @@ const loginUser = asyncHandler(async (req, res) => {
         UserSelectSecureSchema
     );
 
-    await emailQueue.add("sendLoginEmail", {
-        userName: loggedInUser.userName,
-        email: loggedInUser.email,
-        type: `LOGIN`,
-        subject: `Login Verification`,
-        verificationCode: loggedInUser.verificationCode.code,
-    });
+    await sendEmail(
+        loggedInUser.userName,
+        loggedInUser.email,
+        "LOGIN",
+        loggedInUser.verificationCode.code
+    );
 
     return res
         .cookie("accessToken", accessToken, cookieOptions)
@@ -160,21 +164,74 @@ const verifyUser = asyncHandler(async (req, res) => {
     }
 
     const user = await User.findById(userId);
+    if (user.verificationCode.type === "LOGIN" && !user.verified) {
+        throw new ApiError(401, "Please Verify you email first!");
+    }
+    if (user.verificationCode.type === "IP" && !user.verified) {
+        throw new ApiError(401, "Please Verify you email first!");
+    }
+
     if (
         !user ||
-        !user.verified ||
         user.verificationCode.code !== verificationCode ||
         user.verificationCode.expiry < Date.now() ||
         user.verificationCode.type !== type
     ) {
         throw new ApiError(401, "Invalid Verification Code!");
     }
+    const userCodeType = user.verificationCode.type;
+    if (type === "LOGIN" && userCodeType === "LOGIN") {
+        user.verificationCode.code = "";
+        user.verificationCode.expiry = "";
+        user.verificationCode.type = "";
+
+        await user.save({ validateBeforeSave: false });
+
+        return res.status(200).json(
+            new ApiResponse(
+                200,
+                {
+                    message: "User Login Verified Successfully!",
+                    success: true,
+                },
+                "User Login Verified Successfully!"
+            )
+        );
+    }
+
+    if (type === "IP" && userCodeType === "IP") {
+        user.verificationCode.code = "";
+        user.verificationCode.expiry = "";
+        user.verificationCode.type = "";
+        user.lastLoginIP.verified = true;
+        user.lastLoginIP.code = "";
+        user.lastLoginIP.expiry = fiveDays;
+        user.ipVerifyEmail.sent = false;
+        user.ipVerifyEmail.expiry = "";
+
+        await user.save({ validateBeforeSave: false });
+
+        return res.status(200).json(
+            new ApiResponse(
+                200,
+                {
+                    message: "User IP Verified Successfully!",
+                    success: true,
+                },
+                "User IP Verified Successfully!"
+            )
+        );
+    }
 
     user.verificationCode.code = "";
     user.verificationCode.expiry = "";
     user.verificationCode.type = "";
+    user.verified = true;
 
     await user.save({ validateBeforeSave: false });
+
+    // Add Email To Queue
+    await sendEmail(user.userName, user.email, "EMAIL-VERIFIED");
 
     return res
         .status(200)
@@ -214,6 +271,9 @@ const verifyUserIP = asyncHandler(async (req, res) => {
     user.ipVerifyEmail.expiry = "";
 
     await user.save({ validateBeforeSave: false });
+
+    // Add Email To Queue
+    await sendEmail(user.userName, user.email, "IP-VERIFIED");
 
     return res
         .status(200)
@@ -321,6 +381,9 @@ const updateMPIN = asyncHandler(async (req, res) => {
         }
     ).select(UserSelectSecureSchema);
 
+    // Add Email To Queue
+    await sendEmail(user.userName, user.email, "MPIN-UPDATED");
+
     return res
         .status(200)
         .json(
@@ -348,13 +411,8 @@ const forgetPassword = asyncHandler(async (req, res) => {
 
     await user.save({ validateBeforeSave: false });
 
-    await emailQueue.add("sendForgotEmail", {
-        userName: user.userName,
-        email: user.email,
-        type: `FORGOT`,
-        subject: `Forgot Password Request`,
-        verificationCode: resetToken,
-    });
+    // Add Email To Queue
+    await sendEmail(user.userName, user.email, "FORGOT", resetToken);
 
     return res
         .status(201)
@@ -389,12 +447,8 @@ const resetpassword = asyncHandler(async (req, res) => {
     user.resetPasswordTokenExpiry = "";
     await user.save({ validateBeforeSave: false });
 
-    await emailQueue.add("sendResetEmail", {
-        userName: user.userName,
-        email: user.email,
-        type: `RESET`,
-        subject: `Your Password has been changed`,
-    });
+    // Add Email To Queue
+    await sendEmail(user.userName, user.email, "PASSWORD-RESET");
 
     return res
         .status(201)
@@ -407,6 +461,48 @@ const resetpassword = asyncHandler(async (req, res) => {
         );
 });
 
+const isUserVerified = asyncHandler(async (req, res) => {
+    const { _id } = req.user;
+    if (!_id) {
+        throw new ApiError(400, "User ID required!");
+    }
+
+    const user = await User.findOne({ _id: _id, verified: true });
+    if (!user) {
+        throw new ApiError(401, "User ID required!");
+    }
+
+    if (!user.lastLoginIP.verified && !user.ipVerifyEmail.sent) {
+        // Generate Verification Code
+        const verificationCode = sixDigit;
+        const ipAddress = req.ip;
+
+        // Set User IP Details In DB
+        user.verificationCode = {
+            code: verificationCode,
+            type: "IP",
+            expiry: oneHour,
+        };
+        user.lastLoginIP = {
+            ip: ipAddress,
+            verified: false,
+        };
+        user.ipVerifyEmail.sent = true;
+        user.ipVerifyEmail.expiry = fifteenMinutes;
+        await user.save({ validateBeforeSave: false });
+
+        // Add Email To Queue
+        await sendEmail(user.userName, user.email, "IP", verificationCode);
+    }
+
+    return res.status(200).json({
+        message: "User Verified!",
+        success: true,
+        userId: _id,
+        IP: user.lastLoginIP.verified,
+    });
+});
+
 export {
     registerUser,
     loginUser,
@@ -417,4 +513,5 @@ export {
     updateMPIN,
     forgetPassword,
     resetpassword,
+    isUserVerified,
 };
