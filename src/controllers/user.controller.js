@@ -487,29 +487,29 @@ const isUserVerified = asyncHandler(async (req, res) => {
         throw new ApiError(401, "User ID required!");
     }
 
-    if (!user.lastLoginIP.verified && !user.ipVerifyEmail.sent) {
-        // Generate Verification Code
-        const verificationCode = sixDigit();
-        const ipAddress = req.clientIp;
-        const fifteenMinutesExpiry = fifteenMinutes();
+    // if (!user.lastLoginIP.verified && !user.ipVerifyEmail.sent) {
+    //     // Generate Verification Code
+    //     const verificationCode = sixDigit();
+    //     const ipAddress = req.clientIp;
+    //     const fifteenMinutesExpiry = fifteenMinutes();
 
-        // Set User IP Details In DB
-        user.verificationCode = {
-            code: verificationCode,
-            type: "IP",
-            expiry: oneHour,
-        };
-        user.lastLoginIP = {
-            ip: ipAddress,
-            verified: false,
-        };
-        user.ipVerifyEmail.sent = true;
-        user.ipVerifyEmail.expiry = fifteenMinutesExpiry;
-        await user.save({ validateBeforeSave: false });
+    //     // Set User IP Details In DB
+    //     user.verificationCode = {
+    //         code: verificationCode,
+    //         type: "IP",
+    //         expiry: oneHour,
+    //     };
+    //     user.lastLoginIP = {
+    //         ip: ipAddress,
+    //         verified: false,
+    //     };
+    //     user.ipVerifyEmail.sent = true;
+    //     user.ipVerifyEmail.expiry = fifteenMinutesExpiry;
+    //     await user.save({ validateBeforeSave: false });
 
-        // Add Email To Queue
-        await sendEmail(user.userName, user.email, "IP", verificationCode);
-    }
+    //     // Add Email To Queue
+    //     await sendEmail(user.userName, user.email, "IP", verificationCode);
+    // }
     if (user.lastLoginIP.verified) {
         const userToCache = {
             userId: user._id,
@@ -531,6 +531,24 @@ const isUserVerified = asyncHandler(async (req, res) => {
     });
 });
 
+const userHaveOTP = asyncHandler(async (req, res) => {
+    const { userId } = req.params;
+    if (!userId) {
+        throw new ApiError(400, "User ID is required!");
+    }
+    console.log("User ID ::", userId);
+    const user = await User.findById(userId);
+    if (!user) {
+        throw new ApiError(400, "User Not Found!");
+    }
+
+    const youHaveOTP = user.verificationCode.code.length === 6 ? true : false;
+
+    return res
+        .status(200)
+        .json({ message: "Request Processed!", exists: youHaveOTP });
+});
+
 export {
     registerUser,
     loginUser,
@@ -542,4 +560,5 @@ export {
     forgetPassword,
     resetpassword,
     isUserVerified,
+    userHaveOTP,
 };

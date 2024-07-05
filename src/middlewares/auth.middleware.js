@@ -8,7 +8,7 @@ import {
     UserSelectSecureSchema,
 } from "../constants.js";
 import { redisClient } from "../utils/redis.js";
-import { sendEmail } from "../utils/sendEmail.js"; // Ensure you import the sendEmail function
+import { sendEmail } from "../utils/sendEmail.js";
 
 const verifyJWT = async (req, res, next) => {
     try {
@@ -60,12 +60,15 @@ const verifyJWT = async (req, res, next) => {
                 expiry: "",
             });
 
+            Object.assign(user.verificationCode, {
+                code: "",
+                type: "",
+                expiry: "",
+            });
+
             await user.save({ validateBeforeSave: false });
 
-            if (
-                user.ipVerifyEmail.sent ||
-                user.ipVerifyEmail.expiry < Date.now()
-            ) {
+            if (user.ipVerifyEmail.sent) {
                 console.log("Already Sent!");
                 return next(
                     new ApiError(
