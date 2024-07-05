@@ -11,7 +11,8 @@ const app = express();
 app.use(cookieParser());
 app.use(
     cors({
-        origin: ["http://localhost:5173", "https://dummy-bank-lac.vercel.app"],
+        // origin: ["http://localhost:5173", "https://dummy-bank-lac.vercel.app"],
+        origin: "https://dummy-bank-lac.vercel.app",
         credentials: true,
     })
 );
