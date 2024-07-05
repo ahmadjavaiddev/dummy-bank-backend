@@ -13,6 +13,7 @@ import {
 } from "../schemas/user.schema.js";
 import {
     UserSelectSecureSchema,
+    UserSelectWithIP,
     cookieOptions,
     fifteenMinutes,
     fiveDays,
@@ -25,7 +26,8 @@ import { sendEmail } from "../utils/sendEmail.js";
 const generateToken = async (userId, type) => {
     try {
         const accessTokenId = `${uuid()}-${Date.now()}`;
-
+        const code = sixDigit();
+        const oneHourExpiry = oneHour();
         const accessToken = await jwt.sign(
             {
                 _id: userId,
@@ -40,19 +42,19 @@ const generateToken = async (userId, type) => {
         const user = await User.findById(userId);
         user.accessToken = accessToken;
         user.accessTokenId = accessTokenId;
-        user.accessTokenExpiry = oneHour;
+        user.accessTokenExpiry = oneHourExpiry;
 
         if (type === "LOGIN") {
             user.verificationCode = {
-                code: sixDigit,
+                code: code,
                 type: "LOGIN",
-                expiry: oneHour,
+                expiry: oneHourExpiry,
             };
         } else {
             user.verificationCode = {
-                code: sixDigit,
+                code: code,
                 type: "REGISTER",
-                expiry: oneHour,
+                expiry: oneHourExpiry,
             };
         }
 
@@ -84,9 +86,7 @@ const registerUser = asyncHandler(async (req, res) => {
 
     const accessToken = await generateToken(user._id, "REGISTER");
 
-    const newUser = await User.findById(user._id).select(
-        UserSelectSecureSchema
-    );
+    const newUser = await User.findById(user._id).select(UserSelectWithIP);
 
     // Add Email To Queue
     await sendEmail(
@@ -124,9 +124,7 @@ const loginUser = asyncHandler(async (req, res) => {
 
     const accessToken = await generateToken(user._id, "LOGIN");
 
-    const loggedInUser = await User.findById(user._id).select(
-        UserSelectSecureSchema
-    );
+    const loggedInUser = await User.findById(user._id).select(UserSelectWithIP);
 
     await sendEmail(
         loggedInUser.userName,
@@ -200,16 +198,20 @@ const verifyUser = asyncHandler(async (req, res) => {
     }
 
     if (type === "IP" && userCodeType === "IP") {
+        const fiveDaysExpiry = fiveDays();
         user.verificationCode.code = "";
         user.verificationCode.expiry = "";
         user.verificationCode.type = "";
         user.lastLoginIP.verified = true;
         user.lastLoginIP.code = "";
-        user.lastLoginIP.expiry = fiveDays;
+        user.lastLoginIP.expiry = fiveDaysExpiry;
         user.ipVerifyEmail.sent = false;
         user.ipVerifyEmail.expiry = "";
 
         await user.save({ validateBeforeSave: false });
+
+        // Add Email To Queue
+        await sendEmail(user.userName, user.email, "IP-VERIFIED");
 
         return res.status(200).json(
             new ApiResponse(
@@ -467,15 +469,29 @@ const isUserVerified = asyncHandler(async (req, res) => {
         throw new ApiError(400, "User ID required!");
     }
 
-    const user = await User.findOne({ _id: _id, verified: true });
+    const cachedUser = await redisClient.get(`user:verified:${_id}`);
+    if (cachedUser) {
+        const user = JSON.parse(cachedUser);
+        return res.status(200).json({
+            message: "User Verified!",
+            success: true,
+            userId: user.userId,
+            IP: user.IP,
+        });
+    }
+
+    const user = await User.findOne({ _id: _id, verified: true }).select(
+        UserSelectWithIP
+    );
     if (!user) {
         throw new ApiError(401, "User ID required!");
     }
 
     if (!user.lastLoginIP.verified && !user.ipVerifyEmail.sent) {
         // Generate Verification Code
-        const verificationCode = sixDigit;
+        const verificationCode = sixDigit();
         const ipAddress = req.ip;
+        const fifteenMinutesExpiry = fifteenMinutes();
 
         // Set User IP Details In DB
         user.verificationCode = {
@@ -488,11 +504,23 @@ const isUserVerified = asyncHandler(async (req, res) => {
             verified: false,
         };
         user.ipVerifyEmail.sent = true;
-        user.ipVerifyEmail.expiry = fifteenMinutes;
+        user.ipVerifyEmail.expiry = fifteenMinutesExpiry;
         await user.save({ validateBeforeSave: false });
 
         // Add Email To Queue
         await sendEmail(user.userName, user.email, "IP", verificationCode);
+    }
+    if (user.lastLoginIP.verified) {
+        const userToCache = {
+            userId: user._id,
+            IP: user.lastLoginIP.verified,
+        };
+        await redisClient.set(
+            `user:verified:${_id}`,
+            JSON.stringify(userToCache),
+            "PX",
+            1 * 1000 * 60 * 15
+        );
     }
 
     return res.status(200).json({
