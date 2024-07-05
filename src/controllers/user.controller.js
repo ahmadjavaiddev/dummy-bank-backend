@@ -248,7 +248,7 @@ const verifyUser = asyncHandler(async (req, res) => {
 
 const verifyUserIP = asyncHandler(async (req, res) => {
     const { email, verificationCode } = req.body;
-    const ipAddress = req.ip;
+    const ipAddress = req.clientIp;
 
     if (ipAddress.trim() === "") {
         throw new ApiError(401, "IP Address is not valid!");
@@ -490,7 +490,7 @@ const isUserVerified = asyncHandler(async (req, res) => {
     if (!user.lastLoginIP.verified && !user.ipVerifyEmail.sent) {
         // Generate Verification Code
         const verificationCode = sixDigit();
-        const ipAddress = req.ip;
+        const ipAddress = req.clientIp;
         const fifteenMinutesExpiry = fifteenMinutes();
 
         // Set User IP Details In DB

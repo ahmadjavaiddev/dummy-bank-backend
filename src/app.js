@@ -6,18 +6,20 @@ import morgan from "morgan";
 import fs from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import requestIp from "request-ip";
 
 const app = express();
 app.use(cookieParser());
 app.use(
     cors({
-        // origin: ["http://localhost:5173", "https://dummy-bank-lac.vercel.app"],
-        origin: "https://dummy-bank-lac.vercel.app",
+        origin: ["http://localhost:5173", "https://dummy-bank-lac.vercel.app"],
+        // origin: "https://dummy-bank-lac.vercel.app",
         credentials: true,
     })
 );
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(requestIp.mw());
 
 const morganFormat = ":method :url :status :response-time ms";
 app.use(
