@@ -10,6 +10,7 @@ import {
     resetpassword,
     verifyUser,
     isUserVerified,
+    userHaveOTP,
 } from "../controllers/user.controller.js";
 import verifyJWT from "../middlewares/auth.middleware.js";
 import verifyUserId from "../middlewares/verify.middleware.js";
@@ -26,5 +27,6 @@ router.post("/update-mpin", verifyJWT, updateMPIN);
 router.post("/forgot-password", forgetPassword);
 router.post("/reset-password", resetpassword);
 router.get("/check-verify-user", verifyUserId, isUserVerified);
+router.get("/have-otp/:userId", verifyUserId, userHaveOTP);
 
 export default router;
