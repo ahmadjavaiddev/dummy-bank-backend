@@ -1,11 +1,17 @@
 import jwt from "jsonwebtoken";
 import User from "../models/user.model.js";
 import { ApiError } from "../utils/ApiError.js";
-import { oneHour, sixDigit, UserSelectSecureSchema } from "../constants.js";
+import {
+    fifteenMinutes,
+    oneHour,
+    sixDigit,
+    UserSelectSecureSchema,
+} from "../constants.js";
+import { redisClient } from "../utils/redis.js";
+import { sendEmail } from "../utils/sendEmail.js"; // Ensure you import the sendEmail function
 
-const verifyJWT = async (req, _, next) => {
+const verifyJWT = async (req, res, next) => {
     try {
-        // Extract the token from cookies or Authorization header
         const token =
             req.cookies?.accessToken ||
             req.header("Authorization")?.replace("Bearer ", "");
@@ -14,16 +20,15 @@ const verifyJWT = async (req, _, next) => {
             return next(new ApiError(401, "Authentication token not found."));
         }
 
-        // Verify the token
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const user = await User.findById(decoded._id).exec();
 
-        // Find the user by ID
-        const user = await User.findById(decoded._id);
         if (!user) {
             return next(new ApiError(401, "Authentication failed."));
         }
-        // Check user verification status and token validity
+
         const isTokenValid = decoded.accessTokenId === user.accessTokenId;
+
         if (
             !user.verified ||
             user.accessTokenExpiry < Date.now() ||
@@ -32,15 +37,31 @@ const verifyJWT = async (req, _, next) => {
             return next(new ApiError(401, "Invalid authentication token."));
         }
 
+        const ipAddress = req.ip;
         const verifiedIp = user.lastLoginIP;
-        // Check If the IP Address is Valid OR Not. If IP Address Is Valid Then Skip The IP Verification Part
+
         if (
             !verifiedIp ||
             !verifiedIp.ip ||
+            verifiedIp.ip !== ipAddress ||
             !verifiedIp.verified ||
             verifiedIp.expiry < Date.now()
         ) {
-            // Check If Email Already Sent Return Back
+            await redisClient.del(`user:verified:${user._id}`);
+
+            Object.assign(user.lastLoginIP, {
+                ip: "",
+                verified: false,
+                expiry: "",
+            });
+
+            Object.assign(user.ipVerifyEmail, {
+                sent: false,
+                expiry: "",
+            });
+
+            await user.save({ validateBeforeSave: false });
+
             if (
                 user.ipVerifyEmail.sent ||
                 user.ipVerifyEmail.expiry < Date.now()
@@ -54,29 +75,27 @@ const verifyJWT = async (req, _, next) => {
                 );
             }
 
-            // Generate Verification Code
-            const verificationCode = sixDigit;
-            const ipAddress = req.ip;
-
-            // Set User IP Details In DB
+            const verificationCode = sixDigit();
             user.verificationCode = {
                 code: verificationCode,
                 type: "IP",
                 expiry: oneHour,
             };
-            user.lastLoginIP = {
+
+            Object.assign(user.lastLoginIP, {
                 ip: ipAddress,
                 verified: false,
-            };
-            user.ipVerifyEmail.sent = true;
-            user.ipVerifyEmail.expiry = fifteenMinutes;
-            await user.save({ validateBeforeSave: false });
+            });
 
-            // Add Email To Queue
+            Object.assign(user.ipVerifyEmail, {
+                sent: true,
+                expiry: fifteenMinutes(),
+            });
+
+            await user.save({ validateBeforeSave: false });
 
             await sendEmail(user.userName, user.email, "IP", verificationCode);
 
-            // Alert The User
             return next(
                 new ApiError(
                     401,
@@ -85,16 +104,12 @@ const verifyJWT = async (req, _, next) => {
             );
         }
 
-        // Fetch User Without The Some Important Fields
-        const verifiedUser = await User.findById(user._id).select(
-            UserSelectSecureSchema
-        );
-
-        // Attach the user to the request object
+        const verifiedUser = await User.findById(user._id)
+            .select(UserSelectSecureSchema)
+            .exec();
         req.user = verifiedUser;
         next();
     } catch (error) {
-        // Pass the error to the next middleware
         next(new ApiError(401, "Invalid access token."));
     }
 };
