@@ -12,13 +12,11 @@ const app = express();
 app.use(cookieParser());
 app.use(
     cors({
-        // origin: process.env.ORIGIN,
-        // origin: ["http://localhost:5173", "https://dummy-bank-lac.vercel.app"],
-        // origin: "https://dummy-bank-lac.vercel.app",
-        origin: "*",
+        origin: "https://dummy-bank-lac.vercel.app", // Replace with your actual frontend URL
         credentials: true,
     })
 );
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(requestIp.mw());
