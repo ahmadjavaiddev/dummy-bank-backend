@@ -32,10 +32,12 @@ const userSchema = new mongoose.Schema(
         IBAN: {
             type: String,
             required: [true, "IBAN is required"],
+            unique: [true, "IBAN should be Unique"],
         },
         accountNumber: {
             type: String,
             required: [true, "accountNumber is required"],
+            unique: [true, "accountNumber should be Unique"],
         },
         mPin: {
             code: {
