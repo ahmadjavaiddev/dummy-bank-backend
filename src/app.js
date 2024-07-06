@@ -10,7 +10,15 @@ import requestIp from "request-ip";
 
 const app = express();
 app.use(cookieParser());
-app.use(cors());
+app.use(
+    cors({
+        // origin: process.env.ORIGIN,
+        // origin: ["http://localhost:5173", "https://dummy-bank-lac.vercel.app"],
+        // origin: "https://dummy-bank-lac.vercel.app",
+        origin: "*",
+        credentials: true,
+    })
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(requestIp.mw());
