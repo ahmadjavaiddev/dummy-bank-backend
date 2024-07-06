@@ -25,7 +25,8 @@ import {
     generateIBAN,
     generateUniqueAccountNumber,
 } from "../utils/generateIban.js";
-import geoip from "geoip-lite";
+// import geoip from "geoip-lite";
+import geoip from "geoip-country";
 
 const generateToken = async (userId, type) => {
     try {
