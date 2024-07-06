@@ -25,8 +25,6 @@ import {
     generateIBAN,
     generateUniqueAccountNumber,
 } from "../utils/generateIban.js";
-// import geoip from "geoip-lite";
-import geoip from "geoip-country";
 
 const generateToken = async (userId, type) => {
     try {
@@ -82,14 +80,9 @@ const registerUser = asyncHandler(async (req, res) => {
 
     const accountNumber = await generateUniqueAccountNumber();
 
-    const ipAddress = req.clientIp;
-    // const ipAddress = "207.97.227.239";
     // Generate IBAN for the user
-    const geo = geoip.lookup(ipAddress);
-    const country = geo ? geo.country : "DF";
-    const IBAN = await generateIBAN(country, "10000000", accountNumber);
+    const IBAN = await generateIBAN("DF", "10000000", accountNumber);
 
-    console.log("Geo ::", geo);
     console.log("IBAN ::", IBAN);
 
     const hashedPassword = await argon2.hash(password);
