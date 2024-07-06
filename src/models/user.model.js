@@ -29,6 +29,14 @@ const userSchema = new mongoose.Schema(
             type: String,
             required: [true, "Password is required"],
         },
+        IBAN: {
+            type: String,
+            required: [true, "IBAN is required"],
+        },
+        accountNumber: {
+            type: String,
+            required: [true, "accountNumber is required"],
+        },
         mPin: {
             code: {
                 type: String,

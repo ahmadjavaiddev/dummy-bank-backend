@@ -15,13 +15,17 @@ import {
     UserSelectSecureSchema,
     UserSelectWithIP,
     cookieOptions,
-    fifteenMinutes,
     fiveDays,
     oneHour,
     sixDigit,
 } from "../constants.js";
 import { redisClient } from "../utils/redis.js";
 import { sendEmail } from "../utils/sendEmail.js";
+import {
+    generateIBAN,
+    generateUniqueAccountNumber,
+} from "../utils/generateIban.js";
+import geoip from "geoip-lite";
 
 const generateToken = async (userId, type) => {
     try {
@@ -75,6 +79,18 @@ const registerUser = asyncHandler(async (req, res) => {
         throw new ApiError(401, "User already exists!");
     }
 
+    const accountNumber = await generateUniqueAccountNumber();
+
+    const ipAddress = req.clientIp;
+    // const ipAddress = "207.97.227.239";
+    // Generate IBAN for the user
+    const geo = geoip.lookup(ipAddress);
+    const country = geo ? geo.country : "DF";
+    const IBAN = await generateIBAN(country, "10000000", accountNumber);
+
+    console.log("Geo ::", geo);
+    console.log("IBAN ::", IBAN);
+
     const hashedPassword = await argon2.hash(password);
     const user = await User.create({
         firstName: firstName,
@@ -82,6 +98,8 @@ const registerUser = asyncHandler(async (req, res) => {
         userName: userName,
         email: email,
         password: hashedPassword,
+        IBAN: IBAN,
+        accountNumber: accountNumber,
     });
 
     const accessToken = await generateToken(user._id, "REGISTER");
