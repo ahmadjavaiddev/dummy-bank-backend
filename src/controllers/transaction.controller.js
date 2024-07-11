@@ -7,6 +7,7 @@ import {
     requestMoneySchema,
     sendMoneySchema,
 } from "../schemas/transaction.schema.js";
+import { transactionQueue } from "../utils/Queue.js";
 
 const sendMoney = asyncHandler(async (req, res) => {
     const senderId = req.user._id;
@@ -14,74 +15,46 @@ const sendMoney = asyncHandler(async (req, res) => {
         throw new ApiError(401, "You must be logged in to send money!");
     }
 
-    sendMoneySchema.parse(req.body);
-    const { receiverEmail, amount, description } = req.body;
+    const { name, receiverEmail, amount, description } = req.body;
+    const numberAmount = Number(amount);
+
+    sendMoneySchema.parse({
+        name,
+        receiverEmail,
+        amount: numberAmount,
+        description,
+    });
 
     // Check if the amount is valid
-    if (isNaN(amount) || amount <= 0) {
+    if (isNaN(numberAmount) || numberAmount <= 0) {
         throw new ApiError(400, "Invalid Amount!");
     }
 
-    // Check If Receiver Exists
-    const checkReceiverEmail = await User.findOne({
+    const receiver = await User.findOne({
         email: receiverEmail,
     });
-    if (!checkReceiverEmail || checkReceiverEmail.verified === false) {
+    if (!receiver || !receiver.verified) {
         throw new ApiError(400, "Invalid User Email! OR User is not verified!");
     }
 
-    // Check if the user has enough balance
-    const sender = await User.findOne({ _id: senderId, verified: true });
-    if (!sender) {
-        throw new ApiError(401, "UnAuthorized User!");
-    }
-    if (
-        sender.balance <= 0 ||
-        sender.balance < amount ||
-        sender.balance - amount < 0
-    ) {
-        throw new ApiError(400, "Insufficient Balance!");
-    }
-
-    // Find the receiver
-    const receiver = await User.findOne({
-        email: receiverEmail,
-        verified: true,
-    });
-    if (!receiver) {
-        throw new ApiError(400, "User Not Found!");
-    }
-
-    // Update the balance of the sender
-    sender.balance = sender.balance - amount;
-    await sender.save();
-
-    // Update the balance of the receiver
-    receiver.balance = receiver.balance + amount;
-    await receiver.save();
-
-    // Create the transaction
     const transaction = await Transaction.create({
         from: senderId,
         to: receiver._id,
-        amount: amount,
+        amount: numberAmount,
+        name: name,
         description: description,
-        status: "COMPLETED",
+        status: "QUEUED",
         type: "TRANSFER",
     });
     if (!transaction) {
         throw new ApiError(400, "Transaction Failed!");
     }
 
+    const jobId = await transactionQueue({ transactionId: transaction._id });
+
     return res
-        .status(201)
-        .json(
-            new ApiResponse(
-                201,
-                { message: "Transaction Successful!", success: true },
-                "Transaction Successful!"
-            )
-        );
+        .status(202)
+        .json({ message: "Transaction received", jobId: jobId });
 });
 
 const requestMoney = asyncHandler(async (req, res) => {
