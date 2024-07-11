@@ -1,7 +1,7 @@
 import { ApiError } from "./ApiError.js";
 import { emailQueue } from "./Queue.js";
 
-async function sendEmail(userName, email, type, code) {
+async function sendEmail(name, { userName, email, type, code }) {
     try {
         let typeText;
 
@@ -30,7 +30,7 @@ async function sendEmail(userName, email, type, code) {
             typeText = "Verify Your IP Address";
         }
 
-        await emailQueue.add(type, {
+        await emailQueue(name, {
             userName: userName,
             email: email,
             type: type,
