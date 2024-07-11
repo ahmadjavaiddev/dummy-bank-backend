@@ -3,23 +3,33 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import logger from "./utils/logger.js";
 import morgan from "morgan";
-import fs from "fs";
-import { dirname, join } from "path";
-import { fileURLToPath } from "url";
-import requestIp from "request-ip";
+import { createServer } from "http";
+import { initializeSocketIO } from "./socket/index.js";
+import { Server } from "socket.io";
 
 const app = express();
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+    pingTimeout: 60000,
+    cors: {
+        origin: "*",
+        credentials: true,
+    },
+});
+
+app.set("io", io); // using set method to mount the `io` instance on the app to avoid usage of `global`
+
 app.use(cookieParser());
 app.use(
     cors({
-        origin: "https://dummy-bank-lac.vercel.app", // Replace with your actual frontend URL
+        origin: ["http://localhost:5173", "https://dummy-bank-lac.vercel.app"], // Replace with your actual frontend URL
         credentials: true,
     })
 );
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(requestIp.mw());
+initializeSocketIO(io);
 
 const morganFormat = ":method :url :status :response-time ms";
 app.use(
@@ -41,10 +51,13 @@ app.use(
 import userRouter from "./routes/user.route.js";
 import transactionRouter from "./routes/transaction.route.js";
 import cardRouter from "./routes/card.route.js";
+import notificationRouter from "./routes/notification.route.js";
+import { errorHandler } from "./middlewares/error.middleware.js";
 
 app.use("/api/v1/users", userRouter);
 app.use("/api/v1/transactions", transactionRouter);
 app.use("/api/v1/card", cardRouter);
+app.use("/api/v1/notifications", notificationRouter);
 
 app.get("/health", async (req, res) => {
     try {
@@ -57,21 +70,6 @@ app.get("/health", async (req, res) => {
     }
 });
 
-app.get("/empty-logs", async (req, res) => {
-    try {
-        const __filename = fileURLToPath(import.meta.url);
-        const __dirname = dirname(__filename);
-        const filePath = join(__dirname, "..", "app.log");
+app.use(errorHandler);
 
-        fs.unlinkSync(filePath);
-
-        return res.status(201).json({
-            message: "Logs Removed SuccessFully!",
-            success: true,
-        });
-    } catch (error) {
-        console.log("Error while removing the logs ::", error.message);
-    }
-});
-
-export default app;
+export { httpServer };
