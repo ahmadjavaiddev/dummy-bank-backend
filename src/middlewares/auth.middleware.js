@@ -1,120 +1,48 @@
-import jwt from "jsonwebtoken";
+import { UserSecureSelect } from "../constants.js";
 import User from "../models/user.model.js";
 import { ApiError } from "../utils/ApiError.js";
-import {
-    fifteenMinutes,
-    oneHour,
-    sixDigit,
-    UserSelectSecureSchema,
-} from "../constants.js";
+import { asyncHandler } from "../utils/asyncHandler.js";
+import jwt from "jsonwebtoken";
 import { redisClient } from "../utils/redis.js";
-import { sendEmail } from "../utils/sendEmail.js";
 
-const verifyJWT = async (req, res, next) => {
+export const verifyJWT = asyncHandler(async (req, res, next) => {
+    const token =
+        req.cookies?.accessToken ||
+        req.header("Authorization")?.replace("Bearer ", "");
+
+    if (!token) {
+        throw new ApiError(401, "Unauthorized request");
+    }
+
     try {
-        const token =
-            req.cookies?.accessToken ||
-            req.header("Authorization")?.replace("Bearer ", "");
+        const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
 
-        if (!token) {
-            return next(new ApiError(401, "Authentication token not found."));
-        }
-
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded._id).exec();
-
-        if (!user) {
-            return next(new ApiError(401, "Authentication failed."));
-        }
-
-        const isTokenValid = decoded.accessTokenId === user.accessTokenId;
-
-        if (
-            !user.verified ||
-            user.accessTokenExpiry < Date.now() ||
-            !isTokenValid
-        ) {
-            return next(new ApiError(401, "Invalid authentication token."));
-        }
-
-        const ipAddress = req.clientIp;
-        const verifiedIp = user.lastLoginIP;
-
-        if (
-            !verifiedIp ||
-            !verifiedIp.ip ||
-            verifiedIp.ip !== ipAddress ||
-            !verifiedIp.verified ||
-            verifiedIp.expiry < Date.now()
-        ) {
-            await redisClient.del(`user:verified:${user._id}`);
-
-            Object.assign(user.lastLoginIP, {
-                ip: "",
-                verified: false,
-                expiry: "",
-            });
-
-            Object.assign(user.ipVerifyEmail, {
-                sent: false,
-                expiry: "",
-            });
-
-            Object.assign(user.verificationCode, {
-                code: "",
-                type: "",
-                expiry: "",
-            });
-
-            await user.save({ validateBeforeSave: false });
-
-            if (user.ipVerifyEmail.sent) {
-                console.log("Already Sent!");
-                return next(
-                    new ApiError(
-                        401,
-                        "IP Address is not verified. Please check your email to verify your IP"
-                    )
-                );
+        const cachedUser = await redisClient.get(`user:${decodedToken._id}`);
+        if (cachedUser) {
+            req.user = JSON.parse(cachedUser);
+        } else {
+            const user = await User.findOne({
+                _id: decodedToken?._id,
+                isEmailVerified: true,
+                isLoggedIn: true,
+            }).select(UserSecureSelect);
+            if (!user) {
+                throw new ApiError(401, "Invalid User Identity");
             }
 
-            const verificationCode = sixDigit();
-            user.verificationCode = {
-                code: verificationCode,
-                type: "IP",
-                expiry: oneHour,
-            };
-
-            Object.assign(user.lastLoginIP, {
-                ip: ipAddress,
-                verified: false,
-            });
-
-            Object.assign(user.ipVerifyEmail, {
-                sent: true,
-                expiry: fifteenMinutes(),
-            });
-
-            await user.save({ validateBeforeSave: false });
-
-            await sendEmail(user.userName, user.email, "IP", verificationCode);
-
-            return next(
-                new ApiError(
-                    401,
-                    "IP Address is not verified. Please check your email to verify your IP"
-                )
+            await redisClient.set(
+                `user:${user._id}`,
+                JSON.stringify(user),
+                "EX",
+                3600
             );
+            req.user = user;
         }
 
-        const verifiedUser = await User.findById(user._id)
-            .select(UserSelectSecureSchema)
-            .exec();
-        req.user = verifiedUser;
         next();
     } catch (error) {
-        next(new ApiError(401, "Invalid access token."));
+        throw new ApiError(401, error?.message || "Invalid access token");
     }
-};
+});
 
 export default verifyJWT;
