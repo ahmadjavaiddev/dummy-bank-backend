@@ -1,3 +1,5 @@
+export const UserSecureSelect =
+    "-password -mPin -verificationCode -resetPasswordToken -resetPasswordTokenExpiry -haveCard -lastLoginIP -ipVerifyEmail -refreshToken -virtualCard -__v";
 export const UserSelectSecureSchema =
     "-password -accessToken -accessTokenId -accessTokenExpiry -mPin -verifiedIPS -haveCard -balance -virtualCard -ipVerificationCode -lastLoginIP -ipVerifyEmail -__v";
 export const UserSelectSchema =
@@ -31,3 +33,48 @@ export const sixDigit = () => {
     const code = Math.floor(100000 + Math.random() * 900000);
     return code;
 };
+
+export const EmailSendEnum = Object.freeze({
+    LOGIN: "LOGIN",
+    REGISTER: "REGISTER",
+    IP: "IP",
+});
+
+export const VerificationCodeEnum = Object.freeze({
+    LOGIN: "LOGIN",
+    REGISTER: "REGISTER",
+    IP: "IP",
+});
+
+export const TransactionStatusEnum = Object.freeze({
+    PENDING: "PENDING",
+    COMPLETED: "COMPLETED",
+    FAILED: "FAILED",
+    QUEUED: "QUEUED",
+});
+
+export const TransactionTypeEnum = Object.freeze({
+    TRANSFER: "TRANSFER",
+    WITHDRAW: "WITHDRAW",
+    DEPOSIT: "DEPOSIT",
+    REQUEST: "REQUEST",
+});
+
+export const NotificationTypeEnum = Object.freeze({
+    LOGIN: "LOGIN",
+    TRANSACTION: "TRANSACTION",
+    MPIN: "MPIN",
+    CARD: "CARD",
+    PAYMENT: "PAYMENT",
+});
+
+export const NotificationStatusEnum = Object.freeze({
+    COMPLETED: "COMPLETED",
+    QUEUED: "QUEUED",
+    FAILED: "FAILED",
+    RECEIVED: "RECEIVED",
+    CREATED: "CREATED",
+    FREEZE: "FREEZE",
+    UNFREEZE: "UNFREEZE",
+    REQUESTED: "REQUESTED",
+});
