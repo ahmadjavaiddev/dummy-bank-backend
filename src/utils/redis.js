@@ -1,21 +1,22 @@
 import Redis from "ioredis";
 
-// const redisClient = new Redis(process.env.REDIS_URI, {
-//     maxRetriesPerRequest: null,
-// });
-const redisClient = new Redis({
+const redisConfig = {
     host: process.env.APP_REDIS_HOST,
     port: process.env.APP_REDIS_PORT,
     password: process.env.APP_REDIS_PASSWORD,
     maxRetriesPerRequest: null,
-});
+};
+
+const redisClient = new Redis(redisConfig);
 
 const connectRedis = async () => {
     try {
         // Check if the client is already connecting or connected
         if (
-            redisClient.status === "connecting" ||
-            redisClient.status === "connected"
+            redisClient.status === "ready" ||
+            redisClient.status === "connected" ||
+            redisClient.status === "connect" ||
+            redisClient.status === "connecting"
         ) {
             console.log("Redis client is already connecting/connected.");
             return;
@@ -23,18 +24,13 @@ const connectRedis = async () => {
 
         // If not already connecting or connected, initiate connection
         await redisClient.connect();
-        console.log("Connected to Redis!");
         return;
     } catch (error) {
         console.error("Error while connecting to Redis:", error);
     }
 };
 
-redisClient.on("connect", () => {
-    console.log("Redis Connected");
-});
-
-// Event listeners for Redis client errors and connection closed
+// Event listeners for Redis client
 redisClient.on("error", (err) => {
     console.error("Redis error:", err);
 });
@@ -44,4 +40,4 @@ redisClient.on("end", () => {
     setTimeout(connectRedis, 1000); // Attempt to reconnect after 1 second
 });
 
-export { connectRedis, redisClient };
+export { connectRedis, redisClient, redisConfig };
