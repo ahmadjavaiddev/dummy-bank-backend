@@ -2,7 +2,6 @@ import User from "../models/user.model.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
-import jwt from "jsonwebtoken";
 import { v4 as uuid } from "uuid";
 import argon2 from "argon2";
 import {
@@ -12,60 +11,51 @@ import {
     updateUserSchema,
 } from "../schemas/user.schema.js";
 import {
+    EmailSendEnum,
+    UserSecureSelect,
     UserSelectSecureSchema,
     UserSelectWithIP,
+    VerificationCodeEnum,
     cookieOptions,
-    fiveDays,
     oneHour,
     sixDigit,
 } from "../constants.js";
 import { redisClient } from "../utils/redis.js";
 import { sendEmail } from "../utils/sendEmail.js";
-import {
-    generateIBAN,
-    generateUniqueAccountNumber,
-} from "../utils/generateIban.js";
+import { generateIBAN } from "../utils/generateIban.js";
 
-const generateToken = async (userId, type) => {
+const generateAccessAndRefreshTokens = async (userId, type) => {
     try {
-        const accessTokenId = `${uuid()}-${Date.now()}`;
-        const code = sixDigit();
-        const oneHourExpiry = oneHour();
-        const accessToken = await jwt.sign(
-            {
-                _id: userId,
-                accessTokenId: accessTokenId,
-            },
-            process.env.JWT_SECRET,
-            {
-                expiresIn: "1h",
-            }
-        );
-
         const user = await User.findById(userId);
-        user.accessToken = accessToken;
-        user.accessTokenId = accessTokenId;
-        user.accessTokenExpiry = oneHourExpiry;
+        const accessToken = user.generateAccessToken();
+        const refreshToken = user.generateRefreshToken();
+        const verificationCode = sixDigit();
+        const oneHourExpiry = oneHour();
 
-        if (type === "LOGIN") {
+        // attach refresh token to the user document to avoid refreshing the access token with multiple refresh tokens
+        user.refreshToken = refreshToken;
+
+        if (type === VerificationCodeEnum.LOGIN) {
             user.verificationCode = {
-                code: code,
-                type: "LOGIN",
+                code: verificationCode,
+                type: VerificationCodeEnum.LOGIN,
                 expiry: oneHourExpiry,
             };
         } else {
             user.verificationCode = {
-                code: code,
-                type: "REGISTER",
+                code: verificationCode,
+                type: VerificationCodeEnum.REGISTER,
                 expiry: oneHourExpiry,
             };
         }
 
         await user.save({ validateBeforeSave: false });
-
-        return accessToken;
+        return { accessToken, refreshToken, verificationCode };
     } catch (error) {
-        console.log("Error in generateToken ::", error);
+        throw new ApiError(
+            500,
+            "Something went wrong while generating the access token"
+        );
     }
 };
 
@@ -73,48 +63,50 @@ const registerUser = asyncHandler(async (req, res) => {
     registerSchema.parse(req.body);
     const { firstName, lastName, userName, email, password } = req.body;
 
-    const existingUser = await User.findOne({ userName, email });
+    const existingUser = await User.findOne({
+        $or: [{ userName }, { email }],
+    });
     if (existingUser) {
-        throw new ApiError(401, "User already exists!");
+        throw new ApiError(409, "User with email or username already exists");
     }
 
-    const accountNumber = await generateUniqueAccountNumber();
-
     // Generate IBAN for the user
-    const IBAN = await generateIBAN("DF", "10000000", accountNumber);
+    const { IBAN, accountNumber } = await generateIBAN();
 
-    console.log("IBAN ::", IBAN);
-
-    const hashedPassword = await argon2.hash(password);
     const user = await User.create({
-        firstName: firstName,
-        lastName: lastName,
-        userName: userName,
-        email: email,
-        password: hashedPassword,
-        IBAN: IBAN,
-        accountNumber: accountNumber,
+        firstName,
+        lastName,
+        userName,
+        email,
+        password,
+        IBAN,
+        accountNumber,
+        isEmailVerified: false,
     });
 
-    const accessToken = await generateToken(user._id, "REGISTER");
-
-    const newUser = await User.findById(user._id).select(UserSelectWithIP);
+    const { accessToken, refreshToken, verificationCode } =
+        await generateAccessAndRefreshTokens(
+            user._id,
+            VerificationCodeEnum.REGISTER
+        );
+    const newUser = await User.findById(user._id).select(UserSecureSelect);
 
     // Add Email To Queue
-    await sendEmail(
-        newUser.userName,
-        newUser.email,
-        "REGISTER",
-        newUser.verificationCode.code
-    );
+    await sendEmail(EmailSendEnum.REGISTER, {
+        userName: userName,
+        email: email,
+        type: EmailSendEnum.REGISTER,
+        code: verificationCode,
+    });
 
     return res
         .cookie("accessToken", accessToken, cookieOptions)
+        .cookie("refreshToken", refreshToken, cookieOptions)
         .status(200)
         .json(
             new ApiResponse(
                 200,
-                { user: newUser },
+                { user: newUser, accessToken: accessToken },
                 "Please check your email to verify your account!"
             )
         );
@@ -124,34 +116,39 @@ const loginUser = asyncHandler(async (req, res) => {
     loginSchema.parse(req.body);
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email, verified: true });
+    const user = await User.findOne({ email, isEmailVerified: true });
     if (!user) {
-        throw new ApiError(401, "User not found!");
+        throw new ApiError(404, "User not found!");
     }
 
-    const isValidPassword = await argon2.verify(user.password, password);
+    const isValidPassword = await user.isPasswordCorrect(password);
     if (!isValidPassword) {
         throw new ApiError(401, "Invalid password!");
     }
 
-    const accessToken = await generateToken(user._id, "LOGIN");
+    const { accessToken, refreshToken, verificationCode } =
+        await generateAccessAndRefreshTokens(
+            user._id,
+            VerificationCodeEnum.LOGIN
+        );
+    const loggedInUser = await User.findById(user._id).select(UserSecureSelect);
 
-    const loggedInUser = await User.findById(user._id).select(UserSelectWithIP);
-
-    await sendEmail(
-        loggedInUser.userName,
-        loggedInUser.email,
-        "LOGIN",
-        loggedInUser.verificationCode.code
-    );
+    // Add Email To Queue
+    await sendEmail(EmailSendEnum.LOGIN, {
+        userName: loggedInUser.userName,
+        email: email,
+        type: EmailSendEnum.LOGIN,
+        code: verificationCode,
+    });
 
     return res
         .cookie("accessToken", accessToken, cookieOptions)
+        .cookie("refreshToken", refreshToken, cookieOptions)
         .status(200)
         .json(
             new ApiResponse(
                 200,
-                { user: loggedInUser },
+                { user: loggedInUser, accessToken: accessToken },
                 "Please check your email for verification code!"
             )
         );
@@ -159,41 +156,42 @@ const loginUser = asyncHandler(async (req, res) => {
 
 const verifyUser = asyncHandler(async (req, res) => {
     const { userId, verificationCode, type } = req.body;
-    if (
-        userId.trim() === "" ||
-        verificationCode.trim() === "" ||
-        type.trim() === "" ||
-        !userId ||
-        !verificationCode ||
-        !type
-    ) {
+    if ([userId, verificationCode, type].some((item) => item.trim() === "")) {
         throw new ApiError(
-            401,
+            400,
             "User ID, Type and Verification Code is Required!"
         );
     }
 
     const user = await User.findById(userId);
-    if (user.verificationCode.type === "LOGIN" && !user.verified) {
-        throw new ApiError(401, "Please Verify you email first!");
+
+    if (!user) {
+        throw new ApiError(404, "User Not Found!");
     }
-    if (user.verificationCode.type === "IP" && !user.verified) {
-        throw new ApiError(401, "Please Verify you email first!");
+
+    const CodeInDB = user.verificationCode;
+    if (CodeInDB.type === VerificationCodeEnum.LOGIN && !user.isEmailVerified) {
+        throw new ApiError(401, "Please verify you email first!");
     }
 
     if (
-        !user ||
-        user.verificationCode.code !== verificationCode ||
-        user.verificationCode.expiry < Date.now() ||
-        user.verificationCode.type !== type
+        CodeInDB.code !== verificationCode ||
+        CodeInDB.expiry < Date.now() ||
+        CodeInDB.type !== type
     ) {
         throw new ApiError(401, "Invalid Verification Code!");
     }
-    const userCodeType = user.verificationCode.type;
-    if (type === "LOGIN" && userCodeType === "LOGIN") {
-        user.verificationCode.code = "";
-        user.verificationCode.expiry = "";
-        user.verificationCode.type = "";
+
+    if (
+        type === VerificationCodeEnum.LOGIN &&
+        CodeInDB.type === VerificationCodeEnum.LOGIN
+    ) {
+        Object.assign(CodeInDB, {
+            code: "",
+            expiry: "",
+            type: "",
+        });
+        user.isLoggedIn = true;
 
         await user.save({ validateBeforeSave: false });
 
@@ -201,46 +199,21 @@ const verifyUser = asyncHandler(async (req, res) => {
             new ApiResponse(
                 200,
                 {
-                    message: "User Login Verified Successfully!",
+                    message: "Login Verified Successfully!",
                     success: true,
                 },
-                "User Login Verified Successfully!"
+                "Login Verified Successfully!"
             )
         );
     }
 
-    if (type === "IP" && userCodeType === "IP") {
-        const fiveDaysExpiry = fiveDays();
-        user.verificationCode.code = "";
-        user.verificationCode.expiry = "";
-        user.verificationCode.type = "";
-        user.lastLoginIP.verified = true;
-        user.lastLoginIP.code = "";
-        user.lastLoginIP.expiry = fiveDaysExpiry;
-        user.ipVerifyEmail.sent = false;
-        user.ipVerifyEmail.expiry = "";
-
-        await user.save({ validateBeforeSave: false });
-
-        // Add Email To Queue
-        await sendEmail(user.userName, user.email, "IP-VERIFIED");
-
-        return res.status(200).json(
-            new ApiResponse(
-                200,
-                {
-                    message: "User IP Verified Successfully!",
-                    success: true,
-                },
-                "User IP Verified Successfully!"
-            )
-        );
-    }
-
-    user.verificationCode.code = "";
-    user.verificationCode.expiry = "";
-    user.verificationCode.type = "";
-    user.verified = true;
+    Object.assign(CodeInDB, {
+        code: "",
+        expiry: "",
+        type: "",
+    });
+    user.isEmailVerified = true;
+    user.isLoggedIn = true;
 
     await user.save({ validateBeforeSave: false });
 
@@ -258,81 +231,32 @@ const verifyUser = asyncHandler(async (req, res) => {
         );
 });
 
-const verifyUserIP = asyncHandler(async (req, res) => {
-    const { email, verificationCode } = req.body;
-    const ipAddress = req.clientIp;
-
-    if (ipAddress.trim() === "") {
-        throw new ApiError(401, "IP Address is not valid!");
-    }
-
-    const user = await User.findOne({ email });
-    if (
-        !user ||
-        !user.verified ||
-        user.lastLoginIP.ip !== ipAddress ||
-        user.lastLoginIP.code !== verificationCode ||
-        user.lastLoginIP.codeExpiry < Date.now()
-    ) {
-        throw new ApiError(401, "Invalid Verification Code!");
-    }
-
-    user.lastLoginIP.code = "";
-    user.lastLoginIP.verified = true;
-    user.lastLoginIP.codeExpiry = "";
-    user.lastLoginIP.expiry = new Date(Date.now() + 1 * 1000 * 60 * 60 * 3); // 3 Days Expiry
-    user.ipVerifyEmail.sent = false;
-    user.ipVerifyEmail.expiry = "";
-
-    await user.save({ validateBeforeSave: false });
-
-    // Add Email To Queue
-    await sendEmail(user.userName, user.email, "IP-VERIFIED");
-
+const getUser = asyncHandler(async (req, res) => {
     return res
         .status(200)
         .json(
-            new ApiResponse(
-                200,
-                { message: "IP Verified Successfully!", success: true },
-                "IP Verified Successfully!"
-            )
+            new ApiResponse(200, req.user, "Current user fetched successfully")
         );
 });
 
-const getUser = asyncHandler(async (req, res) => {
-    const userId = req.user._id;
-    if (!userId) {
-        throw new ApiError(401, "User not found!");
-    }
-
-    const cachedUser = await redisClient.get(`user:${userId}`);
-    if (cachedUser) {
-        return res
-            .status(200)
-            .json(
-                new ApiResponse(
-                    200,
-                    { user: JSON.parse(cachedUser) },
-                    "User Fetched Successfully!"
-                )
-            );
-    }
-
-    const user = await User.findOne({ _id: userId, verified: true }).select(
-        UserSelectSecureSchema
+const logoutUser = asyncHandler(async (req, res) => {
+    await redisClient.del(`user:${req.user._id}`);
+    await User.findByIdAndUpdate(
+        req.user._id,
+        {
+            $set: {
+                refreshToken: "",
+                isLoggedIn: false,
+            },
+        },
+        { new: true }
     );
-    if (!user) {
-        throw new ApiError(401, "User not found!");
-    }
-
-    await redisClient.set(`user:${userId}`, JSON.stringify(user));
 
     return res
         .status(200)
-        .json(
-            new ApiResponse(200, { user: user }, "User Fetched Successfully!")
-        );
+        .clearCookie("accessToken", cookieOptions)
+        .clearCookie("refreshToken", cookieOptions)
+        .json(new ApiResponse(200, {}, "User logged out"));
 });
 
 const updateUser = asyncHandler(async (req, res) => {
@@ -481,7 +405,7 @@ const isUserVerified = asyncHandler(async (req, res) => {
         throw new ApiError(400, "User ID required!");
     }
 
-    const cachedUser = await redisClient.get(`user:verified:${_id}`);
+    const cachedUser = await redisClient.get(`user:${_id}`);
     if (cachedUser) {
         const user = JSON.parse(cachedUser);
         return res.status(200).json({
@@ -498,42 +422,18 @@ const isUserVerified = asyncHandler(async (req, res) => {
     if (!user) {
         throw new ApiError(401, "User ID required!");
     }
-
-    // if (!user.lastLoginIP.verified && !user.ipVerifyEmail.sent) {
-    //     // Generate Verification Code
-    //     const verificationCode = sixDigit();
-    //     const ipAddress = req.clientIp;
-    //     const fifteenMinutesExpiry = fifteenMinutes();
-
-    //     // Set User IP Details In DB
-    //     user.verificationCode = {
-    //         code: verificationCode,
-    //         type: "IP",
-    //         expiry: oneHour,
+    // if (user.lastLoginIP.verified) {
+    //     const userToCache = {
+    //         userId: user._id,
+    //         IP: user.lastLoginIP.verified,
     //     };
-    //     user.lastLoginIP = {
-    //         ip: ipAddress,
-    //         verified: false,
-    //     };
-    //     user.ipVerifyEmail.sent = true;
-    //     user.ipVerifyEmail.expiry = fifteenMinutesExpiry;
-    //     await user.save({ validateBeforeSave: false });
-
-    //     // Add Email To Queue
-    //     await sendEmail(user.userName, user.email, "IP", verificationCode);
+    //     await redisClient.set(
+    //         `user:verified:${_id}`,
+    //         JSON.stringify(userToCache),
+    //         "PX",
+    //         1 * 1000 * 60 * 15
+    //     );
     // }
-    if (user.lastLoginIP.verified) {
-        const userToCache = {
-            userId: user._id,
-            IP: user.lastLoginIP.verified,
-        };
-        await redisClient.set(
-            `user:verified:${_id}`,
-            JSON.stringify(userToCache),
-            "PX",
-            1 * 1000 * 60 * 15
-        );
-    }
 
     return res.status(200).json({
         message: "User Verified!",
@@ -548,10 +448,10 @@ const userHaveOTP = asyncHandler(async (req, res) => {
     if (!userId) {
         throw new ApiError(400, "User ID is required!");
     }
-    console.log("User ID ::", userId);
+
     const user = await User.findById(userId);
     if (!user) {
-        throw new ApiError(400, "User Not Found!");
+        throw new ApiError(404, "User Not Found!");
     }
 
     const youHaveOTP = user.verificationCode.code.length === 6 ? true : false;
@@ -565,8 +465,8 @@ export {
     registerUser,
     loginUser,
     verifyUser,
-    verifyUserIP,
     getUser,
+    logoutUser,
     updateUser,
     updateMPIN,
     forgetPassword,
