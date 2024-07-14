@@ -17,7 +17,7 @@ const createNotification = asyncHandler(async (req, res) => {
 
             const userVerified = await User.findOne({
                 _id: userId,
-                verified: true,
+                isEmailVerified: true,
             });
             if (!userVerified) {
                 throw new ApiError(400, `User ${userId} is not verified`);
@@ -54,7 +54,7 @@ const createNotification = asyncHandler(async (req, res) => {
 const getNotifications = asyncHandler(async (req, res) => {
     const userId = req.user._id;
 
-    const user = await User.findOne({ _id: userId, verified: true });
+    const user = await User.findOne({ _id: userId });
     if (!user) {
         throw new ApiError(400, "User Not Found!");
     }
@@ -63,8 +63,9 @@ const getNotifications = asyncHandler(async (req, res) => {
     if (notifications.length <= 0) {
         throw new ApiError(400, "Notifications Not Found!");
     }
+    const sorted = notifications.sort((a, b) => b.createdAt - a.createdAt);
 
-    return res.status(201).json(new ApiResponse(201, notifications, "Success"));
+    return res.status(201).json(new ApiResponse(201, sorted, "Success"));
 });
 
 export { createNotification, getNotifications };

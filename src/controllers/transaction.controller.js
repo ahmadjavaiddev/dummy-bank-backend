@@ -8,6 +8,9 @@ import {
     sendMoneySchema,
 } from "../schemas/transaction.schema.js";
 import { transactionQueue } from "../utils/Queue.js";
+import crypto from "crypto";
+// import { sendEmail } from "../utils/sendEmail.js";
+import { EmailSendEnum } from "../constants.js";
 
 const sendMoney = asyncHandler(async (req, res) => {
     const senderId = req.user._id;
@@ -32,9 +35,10 @@ const sendMoney = asyncHandler(async (req, res) => {
 
     const receiver = await User.findOne({
         email: receiverEmail,
+        isEmailVerified: true,
     });
-    if (!receiver || !receiver.verified) {
-        throw new ApiError(400, "Invalid User Email! OR User is not verified!");
+    if (!receiver) {
+        throw new ApiError(404, "Invalid User Email! OR User is not verified!");
     }
 
     const transaction = await Transaction.create({
@@ -43,18 +47,76 @@ const sendMoney = asyncHandler(async (req, res) => {
         amount: numberAmount,
         name: name,
         description: description,
-        status: "QUEUED",
+        status: "PENDING",
         type: "TRANSFER",
     });
     if (!transaction) {
         throw new ApiError(400, "Transaction Failed!");
     }
 
-    const jobId = await transactionQueue({ transactionId: transaction._id });
+    const { unHashedToken, hashedToken, tokenExpiry } =
+        transaction.generateVerificationToken();
 
-    return res
-        .status(202)
-        .json({ message: "Transaction received", jobId: jobId });
+    transaction.verificationToken = hashedToken;
+    transaction.verificationExpiry = tokenExpiry;
+    await transaction.save({ validateBeforeSave: false });
+
+    const { userName, email } = req.user;
+
+    // Add Email To Queue
+    // await sendEmail(EmailSendEnum.TRANSACTION_VERIFY, {
+    //     userName: userName,
+    //     email: email,
+    //     type: EmailSendEnum.TRANSACTION_VERIFY,
+    //     code: `${req.protocol}://${req.get(
+    //         "host"
+    //     )}/api/v1/transactions/verify/${unHashedToken}`,
+    // });
+
+    return res.status(202).json({ message: "Transaction received" });
+});
+
+const transactionVerify = asyncHandler(async (req, res) => {
+    const { verificationToken } = req.params;
+
+    if (!verificationToken) {
+        throw new ApiError(400, "Email verification token is missing");
+    }
+
+    // generate a hash from the token that we are receiving
+    let hashedToken = crypto
+        .createHash("sha256")
+        .update(verificationToken)
+        .digest("hex");
+
+    const transaction = await Transaction.findOne({
+        verificationToken: hashedToken,
+        verificationExpiry: { $gt: Date.now() },
+        status: "PENDING",
+    });
+    if (!transaction) {
+        throw new ApiError(404, "Transaction not found!");
+    }
+
+    transaction.verificationToken = undefined;
+    transaction.verificationExpiry = undefined;
+    transaction.status = "QUEUED";
+
+    await transaction.save({ validateBeforeSave: false });
+
+    await transactionQueue({ transactionId: transaction._id });
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            {
+                message:
+                    "Verification Successful, your transaction will be processed soon.",
+                status: "QUEUED",
+            },
+            "Email is verified"
+        )
+    );
 });
 
 const requestMoney = asyncHandler(async (req, res) => {
@@ -187,4 +249,10 @@ const getTransactionsByType = asyncHandler(async (req, res) => {
         );
 });
 
-export { sendMoney, requestMoney, getTransactions, requestedTransactions };
+export {
+    sendMoney,
+    transactionVerify,
+    requestMoney,
+    getTransactions,
+    requestedTransactions,
+};
