@@ -2,7 +2,8 @@ import cookie from "cookie";
 import jwt from "jsonwebtoken";
 import User from "../models/user.model.js";
 import { ApiError } from "../utils/ApiError.js";
-import { UserSelectSecureSchema } from "../constants.js";
+import { UserSecureSelect } from "../constants.js";
+import { redisClient } from "../utils/redis.js";
 
 export const SocketMapUsers = {};
 
@@ -27,19 +28,23 @@ const initializeSocketIO = (io) => {
                 );
             }
 
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            const user = await User.findById(decoded?._id).select(
-                UserSelectSecureSchema
-            );
+            const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
 
-            // retrieve the user
-            if (!user) {
-                throw new ApiError(
-                    401,
-                    "Un-authorized handshake. Token is invalid"
+            const cachedUser = await redisClient.get(`user:${decoded._id}`);
+            if (cachedUser) {
+                socket.user = JSON.parse(cachedUser);
+            } else {
+                const user = await User.findById(decoded?._id).select(
+                    UserSecureSelect
                 );
+                if (!user) {
+                    throw new ApiError(
+                        401,
+                        "Un-authorized handshake. Token is invalid"
+                    );
+                }
+                socket.user = user;
             }
-            socket.user = user;
 
             SocketMapUsers[socket.user._id] = socket.id;
             console.info(
@@ -58,7 +63,6 @@ const initializeSocketIO = (io) => {
                 error?.message ||
                     "Something went wrong while connecting to the socket."
             );
-            throw new ApiError(401, error?.message);
         }
     });
 };
