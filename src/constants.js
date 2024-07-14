@@ -13,6 +13,8 @@ export const cookieOptions = {
     sameSite: "None",
 };
 
+export const TRANSACTION_TOKEN_EXPIRY = 20 * 60 * 1000; // 20 minutes
+
 // HOURS OR TIME OR DAY
 export const oneHour = () => {
     const numbers = new Date(Date.now() + 1 * 1000 * 60 * 60);
@@ -38,6 +40,8 @@ export const EmailSendEnum = Object.freeze({
     LOGIN: "LOGIN",
     REGISTER: "REGISTER",
     IP: "IP",
+    TRANSACTION_VERIFY: "TRANSACTION_VERIFY",
+    EMAIL_VERIFIED: "EMAIL-VERIFIED",
 });
 
 export const VerificationCodeEnum = Object.freeze({
