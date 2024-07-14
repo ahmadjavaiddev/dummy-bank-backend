@@ -59,18 +59,24 @@ const userSchema = new mongoose.Schema(
             type: Boolean,
             default: false,
         },
-        verificationCode: {
-            code: {
-                type: String,
-            },
-            type: {
-                type: String,
-                default: "LOGIN",
-                enum: ["LOGIN", "REGISTER", "IP"],
-            },
-            expiry: {
-                type: Date,
-            },
+        // verificationCode: {
+        //     code: {
+        //         type: String,
+        //     },
+        //     type: {
+        //         type: String,
+        //         default: "LOGIN",
+        //         enum: ["LOGIN", "REGISTER", "IP"],
+        //     },
+        //     expiry: {
+        //         type: Date,
+        //     },
+        // },
+        verificationToken: {
+            type: String,
+        },
+        verificationExpiry: {
+            type: Date,
         },
         resetPasswordToken: {
             type: String,
