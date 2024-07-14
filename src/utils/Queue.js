@@ -1,16 +1,12 @@
 import { redisClient } from "./redis.js";
 
-const emailQueue = async (
-    name,
-    { userName, email, type, subject, verificationCode }
-) => {
+const emailQueue = async (userName, email, type, token) => {
     try {
         const data = {
             userName: userName,
             email: email,
             type: type,
-            subject: subject,
-            verificationCode: verificationCode,
+            token: token,
         };
         const jobId = await redisClient.rpush(
             "queue:e:emails",
