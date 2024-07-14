@@ -22,7 +22,11 @@ app.set("io", io); // using set method to mount the `io` instance on the app to 
 app.use(cookieParser());
 app.use(
     cors({
-        origin: ["http://localhost:5173", "https://dummy-bank-lac.vercel.app"], // Replace with your actual frontend URL
+        origin: [
+            "http://localhost:5173",
+            "https://dummy-bank-lac.vercel.app",
+            "*",
+        ], // Replace with your actual frontend URL
         credentials: true,
     })
 );

@@ -1,4 +1,6 @@
 import mongoose from "mongoose";
+import crypto from "crypto";
+import { TRANSACTION_TOKEN_EXPIRY } from "../constants.js";
 
 const transactionSchema = new mongoose.Schema(
     {
@@ -31,6 +33,12 @@ const transactionSchema = new mongoose.Schema(
             type: String,
             enum: ["TRANSFER", "WITHDRAW", "DEPOSIT", "REQUEST"],
             default: "TRANSFER",
+        },
+        verificationToken: {
+            type: String,
+        },
+        verificationExpiry: {
+            type: Date,
         },
     },
     { timestamps: true }
