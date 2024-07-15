@@ -46,6 +46,14 @@ const userSchema = new mongoose.Schema(
                 type: String,
                 default: "",
             },
+            key: {
+                type: String,
+                default: "",
+            },
+            iv: {
+                type: String,
+                default: "",
+            },
             enabled: {
                 type: Boolean,
                 default: false,
@@ -59,19 +67,6 @@ const userSchema = new mongoose.Schema(
             type: Boolean,
             default: false,
         },
-        // verificationCode: {
-        //     code: {
-        //         type: String,
-        //     },
-        //     type: {
-        //         type: String,
-        //         default: "LOGIN",
-        //         enum: ["LOGIN", "REGISTER", "IP"],
-        //     },
-        //     expiry: {
-        //         type: Date,
-        //     },
-        // },
         verificationToken: {
             type: String,
         },
