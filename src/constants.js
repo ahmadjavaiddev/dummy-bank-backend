@@ -1,5 +1,5 @@
 export const UserSecureSelect =
-    "-password -mPin -verificationCode -resetPasswordToken -resetPasswordTokenExpiry -haveCard -lastLoginIP -ipVerifyEmail -refreshToken -virtualCard -__v";
+    "-password -mPin -verificationExpiry -verificationToken -resetPasswordToken -resetPasswordTokenExpiry -haveCard -refreshToken -virtualCard -__v";
 export const UserSelectSecureSchema =
     "-password -accessToken -accessTokenId -accessTokenExpiry -mPin -verifiedIPS -haveCard -balance -virtualCard -ipVerificationCode -lastLoginIP -ipVerifyEmail -__v";
 export const UserSelectSchema =
@@ -41,7 +41,10 @@ export const EmailSendEnum = Object.freeze({
     REGISTER: "REGISTER",
     IP: "IP",
     TRANSACTION_VERIFY: "TRANSACTION_VERIFY",
-    EMAIL_VERIFIED: "EMAIL-VERIFIED",
+    EMAIL_VERIFIED: "EMAIL_VERIFIED",
+    MPIN_UPDATED: "MPIN_UPDATED",
+    FORGOT_PASSWORD: "FORGOT_PASSWORD",
+    RESET_PASSWORD: "RESET_PASSWORD",
 });
 
 export const VerificationCodeEnum = Object.freeze({
