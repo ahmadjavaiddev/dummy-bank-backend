@@ -6,28 +6,45 @@ import {
     registerUser,
     updateUser,
     forgetPassword,
-    resetpassword,
+    resetPassword,
     verifyUser,
-    userHaveOTP,
     logoutUser,
     refreshAccessToken,
 } from "../controllers/user.controller.js";
 import verifyJWT from "../middlewares/auth.middleware.js";
-import { userRegisterValidator } from "../validator/user.validator.js";
+import {
+    forgetPasswordValidator,
+    resetPasswordValidator,
+    updateMPINValidator,
+    updateUserValidator,
+    userLoginValidator,
+    userRegisterValidator,
+    verifyUserValidator,
+} from "../validator/user.validator.js";
 import { validate } from "../validator/validate.js";
 
 const router = express.Router();
 
-router.post("/register", userRegisterValidator(), validate, registerUser);
-router.post("/login", loginUser);
-router.get("/verify/:token", verifyUser);
-router.get("/user", verifyJWT, getUser);
-router.get("/logout", verifyJWT, logoutUser);
-router.patch("/user", verifyJWT, updateUser);
-router.post("/update-mpin", verifyJWT, updateMPIN);
-router.post("/forgot-password", forgetPassword);
-router.post("/reset-password", resetpassword);
-router.get("/have-otp/:userId", userHaveOTP);
+// UNSECURED ROUTES
+router.route("/register").post(userRegisterValidator(), validate, registerUser);
+router.route("/login").post(userLoginValidator(), validate, loginUser);
+router.route("/verify/:token").get(verifyUserValidator(), validate, verifyUser);
+router
+    .route("/forgot-password")
+    .post(forgetPasswordValidator(), validate, forgetPassword);
+router
+    .route("/reset-password")
+    .post(resetPasswordValidator(), validate, resetPassword);
 router.route("/refresh-token").post(refreshAccessToken);
+
+// SECURED ROUTES
+router.route("/user").get(verifyJWT, getUser);
+router.route("/logout").get(verifyJWT, logoutUser);
+router
+    .route("/user")
+    .patch(verifyJWT, updateUserValidator(), validate, updateUser);
+router
+    .route("/update-mpin")
+    .post(verifyJWT, updateMPINValidator(), validate, updateMPIN);
 
 export default router;
