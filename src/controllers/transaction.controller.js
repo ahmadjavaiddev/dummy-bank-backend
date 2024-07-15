@@ -3,35 +3,25 @@ import Transaction from "../models/transaction.model.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import User from "../models/user.model.js";
+import { emailQueue, transactionQueue } from "../utils/Queue.js";
 import {
-    requestMoneySchema,
-    sendMoneySchema,
-} from "../schemas/transaction.schema.js";
-import { transactionQueue } from "../utils/Queue.js";
-import crypto from "crypto";
-// import { sendEmail } from "../utils/sendEmail.js";
-import { EmailSendEnum } from "../constants.js";
+    EmailSendEnum,
+    TransactionStatusEnum,
+    TransactionTypeEnum,
+} from "../constants.js";
+import {
+    cryptoTokenVerify,
+    generateVerificationToken,
+    verificationUrl,
+} from "../utils/index.js";
 
 const sendMoney = asyncHandler(async (req, res) => {
-    const senderId = req.user._id;
+    const { _id: senderId, userName, email } = req.user;
     if (!senderId) {
         throw new ApiError(401, "You must be logged in to send money!");
     }
 
-    const { name, receiverEmail, amount, description } = req.body;
-    const numberAmount = Number(amount);
-
-    sendMoneySchema.parse({
-        name,
-        receiverEmail,
-        amount: numberAmount,
-        description,
-    });
-
-    // Check if the amount is valid
-    if (isNaN(numberAmount) || numberAmount <= 0) {
-        throw new ApiError(400, "Invalid Amount!");
-    }
+    const { receiverEmail, amount, description } = req.body;
 
     const receiver = await User.findOne({
         email: receiverEmail,
@@ -44,55 +34,52 @@ const sendMoney = asyncHandler(async (req, res) => {
     const transaction = await Transaction.create({
         from: senderId,
         to: receiver._id,
-        amount: numberAmount,
-        name: name,
+        amount: amount,
         description: description,
-        status: "PENDING",
-        type: "TRANSFER",
+        status: TransactionStatusEnum.PENDING,
+        type: TransactionTypeEnum.TRANSFER,
     });
     if (!transaction) {
         throw new ApiError(400, "Transaction Failed!");
     }
 
     const { unHashedToken, hashedToken, tokenExpiry } =
-        transaction.generateVerificationToken();
+        generateVerificationToken();
 
     transaction.verificationToken = hashedToken;
     transaction.verificationExpiry = tokenExpiry;
     await transaction.save({ validateBeforeSave: false });
 
-    const { userName, email } = req.user;
-
     // Add Email To Queue
-    // await sendEmail(EmailSendEnum.TRANSACTION_VERIFY, {
-    //     userName: userName,
-    //     email: email,
-    //     type: EmailSendEnum.TRANSACTION_VERIFY,
-    //     code: `${req.protocol}://${req.get(
-    //         "host"
-    //     )}/api/v1/transactions/verify/${unHashedToken}`,
-    // });
+    const url = verificationUrl(req, unHashedToken, "transactions");
+    await emailQueue(userName, email, EmailSendEnum.TRANSACTION_VERIFY, url);
 
-    return res.status(202).json({ message: "Transaction received" });
+    return res.status(202).json(
+        new ApiResponse(
+            202,
+            {
+                message: "Transaction Created!",
+                success: true,
+                status: TransactionStatusEnum.PENDING,
+            },
+            "Transaction Created!"
+        )
+    );
 });
 
 const transactionVerify = asyncHandler(async (req, res) => {
     const { verificationToken } = req.params;
-
     if (!verificationToken) {
         throw new ApiError(400, "Email verification token is missing");
     }
 
     // generate a hash from the token that we are receiving
-    let hashedToken = crypto
-        .createHash("sha256")
-        .update(verificationToken)
-        .digest("hex");
+    const hashedToken = cryptoTokenVerify(verificationToken);
 
     const transaction = await Transaction.findOne({
         verificationToken: hashedToken,
         verificationExpiry: { $gt: Date.now() },
-        status: "PENDING",
+        status: TransactionStatusEnum.PENDING,
     });
     if (!transaction) {
         throw new ApiError(404, "Transaction not found!");
@@ -100,10 +87,9 @@ const transactionVerify = asyncHandler(async (req, res) => {
 
     transaction.verificationToken = undefined;
     transaction.verificationExpiry = undefined;
-    transaction.status = "QUEUED";
+    transaction.status = TransactionStatusEnum.QUEUED;
 
     await transaction.save({ validateBeforeSave: false });
-
     await transactionQueue({ transactionId: transaction._id });
 
     return res.status(200).json(
@@ -112,9 +98,9 @@ const transactionVerify = asyncHandler(async (req, res) => {
             {
                 message:
                     "Verification Successful, your transaction will be processed soon.",
-                status: "QUEUED",
+                status: TransactionStatusEnum.QUEUED,
             },
-            "Email is verified"
+            "Transaction Queued!"
         )
     );
 });
@@ -125,18 +111,12 @@ const requestMoney = asyncHandler(async (req, res) => {
         throw new ApiError(401, "You must be logged in to request money!");
     }
 
-    requestMoneySchema.parse(req.body);
     const { senderEmail, amount, description } = req.body;
-
-    // Check if the amount is valid
-    if (isNaN(amount) || amount <= 0) {
-        throw new ApiError(401, "Invalid Amount!");
-    }
 
     // Find the user to request money
     const findUserToRequest = await User.findOne({
         email: senderEmail,
-        verified: true,
+        isEmailVerified: true,
     });
     if (!findUserToRequest) {
         throw new ApiError(400, "User Not Found!");
@@ -148,22 +128,21 @@ const requestMoney = asyncHandler(async (req, res) => {
         to: userId,
         amount: amount,
         description: description,
-        status: "PENDING",
-        type: "REQUEST",
+        status: TransactionStatusEnum.PENDING,
+        type: TransactionTypeEnum.REQUEST,
     });
     if (!transaction) {
         throw new ApiError(400, "Request Failed!");
     }
 
-    return res
-        .status(201)
-        .json(
-            new ApiResponse(
-                201,
-                { message: "Request Successful!", success: true },
-                "Request Successful!"
-            )
-        );
+    res.status(201).json(
+        new ApiResponse(
+            201,
+            { message: "Request Successful!", success: true },
+            "Request Successful!"
+        )
+    );
+    // TODO: Send Notification to the user (which have to send money to the requested user)
 });
 
 const getTransactions = asyncHandler(async (req, res) => {
@@ -176,11 +155,13 @@ const getTransactions = asyncHandler(async (req, res) => {
     const transactions = await Transaction.find({
         from: userId,
         status: "COMPLETED",
-    });
+    }).populate("from to", "-_id userName email");
+
     if (!transactions) {
         throw new ApiError(400, "No Transactions Found!");
     }
 
+    transactions.reverse();
     return res
         .status(200)
         .json(
@@ -201,38 +182,7 @@ const requestedTransactions = asyncHandler(async (req, res) => {
     // Find the User Requested Transactions
     const transactions = await Transaction.find({
         to: userId,
-        type: "REQUEST",
-    });
-    if (!transactions) {
-        throw new ApiError(400, "No Transactions Found!");
-    }
-
-    return res
-        .status(200)
-        .json(
-            new ApiResponse(
-                200,
-                { message: "Transactions Found!", success: true, transactions },
-                "Transactions Found!"
-            )
-        );
-});
-
-const getTransactionsByType = asyncHandler(async (req, res) => {
-    const userId = req.user._id;
-    if (!userId) {
-        throw new ApiError(401, "You must be logged in to get transactions!");
-    }
-
-    const { type } = req.query;
-    if (!type) {
-        throw new ApiError(400, "Missing required fields!");
-    }
-
-    // Find the User Completed Transactions
-    const transactions = await Transaction.find({
-        from: userId,
-        type: type,
+        type: TransactionTypeEnum.REQUEST,
     });
     if (!transactions) {
         throw new ApiError(400, "No Transactions Found!");

@@ -1,15 +1,11 @@
 import mongoose from "mongoose";
-import crypto from "crypto";
-import { TRANSACTION_TOKEN_EXPIRY } from "../constants.js";
+import { TransactionStatusEnum, TransactionTypeEnum } from "../constants.js";
 
 const transactionSchema = new mongoose.Schema(
     {
         amount: {
             type: Number,
             required: [true, "Amount is required"],
-        },
-        date: {
-            type: Date,
         },
         description: {
             type: String,
@@ -26,13 +22,13 @@ const transactionSchema = new mongoose.Schema(
         },
         status: {
             type: String,
-            enum: ["PENDING", "COMPLETED", "FAILED", "QUEUED"],
-            default: "PENDING",
+            enum: TransactionStatusEnum,
+            default: TransactionStatusEnum.PENDING,
         },
         type: {
             type: String,
-            enum: ["TRANSFER", "WITHDRAW", "DEPOSIT", "REQUEST"],
-            default: "TRANSFER",
+            enum: TransactionTypeEnum,
+            default: TransactionTypeEnum.TRANSFER,
         },
         verificationToken: {
             type: String,
