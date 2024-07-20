@@ -12,6 +12,7 @@
     "author": "",
     "license": "ISC",
     "dependencies": {
+        "amqplib": "^0.10.4",
         "argon2": "^0.40.3",
         "cookie": "^0.6.0",
         "cookie-parser": "^1.4.6",
