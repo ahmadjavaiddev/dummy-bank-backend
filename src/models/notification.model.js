@@ -17,7 +17,14 @@ const notificationSchema = new mongoose.Schema(
         },
         type: {
             type: String,
-            enum: ["LOGIN", "TRANSACTION", "MPIN", "CARD", "PAYMENT"],
+            enum: [
+                "LOGIN",
+                "TRANSACTION",
+                "VERIFICATION",
+                "MPIN",
+                "CARD",
+                "PAYMENT",
+            ],
             required: [true, "Type is required"],
         },
         status: {
