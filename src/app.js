@@ -4,8 +4,11 @@ import cookieParser from "cookie-parser";
 import logger from "./utils/logger.js";
 import morgan from "morgan";
 import { createServer } from "http";
-import { initializeSocketIO } from "./socket/index.js";
+import { initializeSocketIO, SocketMapUsers } from "./socket/index.js";
 import { Server } from "socket.io";
+import { redisClient } from "./utils/redis.js";
+
+const subscriber = redisClient.duplicate();
 
 const app = express();
 const httpServer = createServer(app);
@@ -71,6 +74,24 @@ app.get("/health", async (req, res) => {
         });
     } catch (error) {
         console.log("Error In Health Route ::", error);
+    }
+});
+
+subscriber.subscribe("notification", "transaction");
+
+subscriber.on("message", (channel, message) => {
+    const parseData = JSON.parse(message);
+
+    if (channel === "notification") {
+        const userId = SocketMapUsers[parseData.userId];
+        io.to(userId).emit("notifications", parseData);
+    }
+    if (channel === "transaction") {
+        const sender = SocketMapUsers[parseData.from._id];
+        const receiver = SocketMapUsers[parseData.to._id];
+
+        io.to(sender).emit("transactions", parseData);
+        io.to(receiver).emit("transactions", parseData);
     }
 });
 
