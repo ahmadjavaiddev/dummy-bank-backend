@@ -3,7 +3,11 @@ import Transaction from "../models/transaction.model.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import User from "../models/user.model.js";
-import { emailQueue, transactionQueue } from "../utils/Queue.js";
+import {
+    emailQueue,
+    notificationQueue,
+    transactionQueue,
+} from "../utils/Queue.js";
 import {
     EmailSendEnum,
     TransactionStatusEnum,
@@ -53,16 +57,22 @@ const sendMoney = asyncHandler(async (req, res) => {
     // Add Email To Queue
     const url = verificationUrl(req, unHashedToken, "transactions");
     await emailQueue(userName, email, EmailSendEnum.TRANSACTION_VERIFY, url);
+    await notificationQueue(
+        senderId,
+        "VERIFICATION",
+        "Verify Your Transaction"
+    );
 
     return res.status(202).json(
         new ApiResponse(
             202,
             {
-                message: "Transaction Created!",
+                message:
+                    "Your Transaction is Pending! Please Verify Your Transaction!",
                 success: true,
                 status: TransactionStatusEnum.PENDING,
             },
-            "Transaction Created!"
+            "Your Transaction is Pending! Please Verify Your Transaction!"
         )
     );
 });
@@ -90,7 +100,7 @@ const transactionVerify = asyncHandler(async (req, res) => {
     transaction.status = TransactionStatusEnum.QUEUED;
 
     await transaction.save({ validateBeforeSave: false });
-    await transactionQueue({ transactionId: transaction._id });
+    await transactionQueue(transaction.from, transaction._id);
 
     return res.status(200).json(
         new ApiResponse(
@@ -145,6 +155,48 @@ const requestMoney = asyncHandler(async (req, res) => {
     // TODO: Send Notification to the user (which have to send money to the requested user)
 });
 
+const approveRequestedPayment = asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+    const { transactionId } = req.params;
+    if (!transactionId) {
+        throw new ApiError(400, "Transaction Id is missing!");
+    }
+
+    const transaction = await Transaction.findOne({
+        _id: transactionId,
+        to: userId,
+        status: TransactionStatusEnum.PENDING,
+        type: TransactionTypeEnum.REQUEST,
+    });
+
+    if (!transaction) {
+        throw new ApiError(400, "Transaction not found!");
+    }
+
+    const { unHashedToken, hashedToken, tokenExpiry } =
+        generateVerificationToken();
+
+    transaction.verificationToken = hashedToken;
+    transaction.verificationExpiry = tokenExpiry;
+    await transaction.save({ validateBeforeSave: false });
+
+    // Add Email To Queue
+    const url = verificationUrl(req, unHashedToken, "transactions");
+    await emailQueue(userName, email, EmailSendEnum.TRANSACTION_VERIFY, url);
+    await notificationQueue(userId, "VERIFICATION", "Verify Your Transaction");
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            {
+                message: "Payment in process. Please verify transaction!",
+                success: true,
+            },
+            "Payment in process. Please verify transaction!"
+        )
+    );
+});
+
 const getTransactions = asyncHandler(async (req, res) => {
     const userId = req.user._id;
     if (!userId) {
@@ -153,8 +205,10 @@ const getTransactions = asyncHandler(async (req, res) => {
 
     // Find the User Completed Transactions
     const transactions = await Transaction.find({
-        from: userId,
-        status: "COMPLETED",
+        $or: [
+            { from: userId, status: "COMPLETED" },
+            { to: userId, status: "COMPLETED" },
+        ],
     }).populate("from to", "-_id userName email");
 
     if (!transactions) {
