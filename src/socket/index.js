@@ -32,17 +32,26 @@ const initializeSocketIO = (io) => {
 
             const cachedUser = await redisClient.get(`user:${decoded._id}`);
             if (cachedUser) {
+                console.log("User found in cache");
                 socket.user = JSON.parse(cachedUser);
             } else {
-                const user = await User.findById(decoded?._id).select(
-                    UserSecureSelect
-                );
+                const user = await User.findOne({
+                    _id: decoded?._id,
+                    isEmailVerified: true,
+                }).select(UserSecureSelect);
                 if (!user) {
+                    console.log("User not found in cache");
                     throw new ApiError(
                         401,
                         "Un-authorized handshake. Token is invalid"
                     );
                 }
+                await redisClient.set(
+                    `user:${user._id}`,
+                    JSON.stringify(user),
+                    "EX",
+                    3600
+                );
                 socket.user = user;
             }
 
