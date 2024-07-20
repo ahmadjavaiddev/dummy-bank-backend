@@ -1,37 +1,50 @@
-import { redisClient } from "./redis.js";
+import { QueueManager } from "../managers/QueueManager.js";
 
-const emailQueue = async (userName, email, type, token) => {
+const queueManager = new QueueManager();
+
+async function emailQueue(userName, email, type, token) {
     try {
+        // await queueManager.connect();
         const data = {
             userName: userName,
             email: email,
             type: type,
             token: token,
         };
-        const jobId = await redisClient.rpush(
-            "queue:e:emails",
-            JSON.stringify(data)
-        );
 
-        return jobId;
+        await queueManager.sendToQueue("email_queue", data);
     } catch (error) {
-        console.log("Error while adding transaction in queue ::", error);
+        console.error("Failed to send email ::", error);
     }
-};
+}
 
-const transactionQueue = async (transactionId) => {
+async function transactionQueue(userId, transactionId) {
     try {
+        // await queueManager.connect();
         const data = {
+            userId: userId,
             transactionId: transactionId,
         };
-        const jobId = await redisClient.rpush(
-            "queue:t:transactions",
-            JSON.stringify(data)
-        );
-        return jobId;
-    } catch (error) {
-        console.log("Error while adding transaction in queue ::", error);
-    }
-};
 
-export { emailQueue, transactionQueue };
+        await queueManager.sendToQueue("transaction_queue", data);
+    } catch (error) {
+        console.error("Failed to send transaction ::", error);
+    }
+}
+
+async function notificationQueue(userId, type, message) {
+    try {
+        // await queueManager.connect();
+        const data = {
+            userId: userId,
+            type: type,
+            message: message,
+        };
+
+        await queueManager.sendToQueue("notification_queue", data);
+    } catch (error) {
+        console.error("Failed to send notification:", error);
+    }
+}
+
+export { emailQueue, transactionQueue, notificationQueue };
