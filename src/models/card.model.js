@@ -23,9 +23,19 @@ const cardSchema = new mongoose.Schema(
             type: String,
             required: [true, "CVV is required"],
         },
-        code: {
+        pinCode: {
             type: String,
-            required: [true, "Code is required"],
+            required: [true, "pinCode is required"],
+        },
+        verified: {
+            type: Boolean,
+            default: false,
+        },
+        verificationToken: {
+            type: String,
+        },
+        verificationExpiry: {
+            type: Date,
         },
     },
     { timestamps: true }

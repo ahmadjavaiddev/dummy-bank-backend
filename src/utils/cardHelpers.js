@@ -43,14 +43,6 @@ const generateUniqueCard = async () => {
     const issueDate = generateIssueDate();
     const cvv = generateCVV();
 
-    console.log(
-        "Card Number, Expiry Date, Issue Date, CVV",
-        cardNumber,
-        expiryDate,
-        issueDate,
-        cvv
-    );
-
     return {
         cardNumber: cardNumber,
         expiryDate: expiryDate,

@@ -30,6 +30,11 @@ const verificationUrl = (req, token, type) => {
             "host"
         )}/api/v1/transactions/verify/${token}`;
     }
+    if (type === "card") {
+        return `${req.protocol}://${req.get(
+            "host"
+        )}/api/v1/card/verify/${token}`;
+    }
 };
 
 const encryptMPIN = (mpin) => {

@@ -4,20 +4,27 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { generateUniqueCard } from "../utils/cardHelpers.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
+import {
+    cryptoTokenVerify,
+    generateVerificationToken,
+    verificationUrl,
+} from "../utils/index.js";
+import { EmailSendEnum } from "../constants.js";
+import { emailQueue, notificationQueue } from "../utils/Queue.js";
 
 const createCard = asyncHandler(async (req, res) => {
     const userId = req.user._id;
+    const { pinCode } = req.body;
 
-    const { code } = req.body;
-
-    // Check if User has a card
-    const userHaveCard = await User.findOne({
+    const user = await User.findOne({
         _id: userId,
-        verified: true,
-        haveCard: true,
+        haveCard: false,
     });
-    if (userHaveCard) {
-        throw new ApiError(401, "You already have a card");
+    if (!user) {
+        throw new ApiError(
+            401,
+            "User is not valid OR User already have a card"
+        );
     }
 
     // Generate unique Card details
@@ -31,15 +38,59 @@ const createCard = asyncHandler(async (req, res) => {
         issueDate: issueDate,
         expiryDate: expiryDate,
         cvv: cvv,
-        code: code,
+        pinCode: pinCode,
     });
     if (!card) {
         throw new ApiError(400, "Card not created");
     }
 
-    // Update User
+    const { unHashedToken, hashedToken, tokenExpiry } =
+        generateVerificationToken();
+
+    card.verificationToken = hashedToken;
+    card.verificationExpiry = tokenExpiry;
+    await card.save({ validateBeforeSave: false });
+
+    // Add Email To Queue
+    const url = verificationUrl(req, unHashedToken, "card");
+    await emailQueue(user.userName, user.email, EmailSendEnum.CARD_VERIFY, url);
+    await notificationQueue(
+        userId,
+        "VERIFICATION",
+        "Verify Your Card Creation"
+    );
+
+    return res.status(201).json(
+        new ApiResponse(
+            202,
+            {
+                message: "Please Verify Your Card Creation!",
+                success: true,
+            },
+            "Please Verify Your Card Creation!"
+        )
+    );
+});
+
+const verifyAndCreateCard = asyncHandler(async (req, res) => {
+    const { verificationToken } = req.params;
+    if (!verificationToken) {
+        throw new ApiError(400, "Email verification token is missing");
+    }
+
+    // generate a hash from the token that we are receiving
+    const hashedToken = cryptoTokenVerify(verificationToken);
+
+    const card = await Card.findOne({
+        verificationToken: hashedToken,
+        verificationExpiry: { $gt: Date.now() },
+    });
+    if (!card) {
+        throw new ApiError(404, "Invalid Verification Token!");
+    }
+
     const user = await User.findOneAndUpdate(
-        { _id: userId },
+        { _id: card.cardHolder },
         {
             $set: {
                 haveCard: true,
@@ -50,7 +101,23 @@ const createCard = asyncHandler(async (req, res) => {
         throw new ApiError(400, "User not found");
     }
 
-    return res.status(201).json(new ApiResponse(201, card, "Card created"));
+    card.verificationToken = undefined;
+    card.verificationExpiry = undefined;
+    card.verified = true;
+
+    await card.save({ validateBeforeSave: false });
+    await notificationQueue(user._id, "CARD", "User Card Created.");
+
+    return res.status(201).json(
+        new ApiResponse(
+            201,
+            {
+                message: "User Card Created.",
+                success: true,
+            },
+            "Card created"
+        )
+    );
 });
 
-export { createCard };
+export { createCard, verifyAndCreateCard };
