@@ -23,7 +23,7 @@ const generateUniqueCard = async () => {
     let cardNumber = "";
     let isUnique = false;
 
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 16; i++) {
         cardNumber += digits[Math.floor(Math.random() * 10)];
     }
 
@@ -33,7 +33,7 @@ const generateUniqueCard = async () => {
             isUnique = true;
         } else {
             cardNumber = "";
-            for (let i = 0; i < 12; i++) {
+            for (let i = 0; i < 16; i++) {
                 cardNumber += digits[Math.floor(Math.random() * 10)];
             }
         }
