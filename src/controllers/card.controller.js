@@ -11,6 +11,7 @@ import {
 } from "../utils/index.js";
 import { EmailSendEnum } from "../constants.js";
 import { emailQueue, notificationQueue } from "../utils/Queue.js";
+import { redisClient } from "../utils/redis.js";
 
 const createCard = asyncHandler(async (req, res) => {
     const userId = req.user._id;
@@ -100,6 +101,7 @@ const verifyAndCreateCard = asyncHandler(async (req, res) => {
     if (!user) {
         throw new ApiError(400, "User not found");
     }
+    await redisClient.del(`user:${user._id}`);
 
     card.verificationToken = undefined;
     card.verificationExpiry = undefined;
@@ -120,4 +122,27 @@ const verifyAndCreateCard = asyncHandler(async (req, res) => {
     );
 });
 
-export { createCard, verifyAndCreateCard };
+const getCardDetails = asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+    const card = await Card.findOne({
+        cardHolder: userId,
+        verified: true,
+    }).select("-verified -createdAt -updatedAt -__v");
+
+    if (!card) {
+        throw new ApiError(404, "Card not found");
+    }
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            {
+                card,
+                success: true,
+            },
+            "Card details"
+        )
+    );
+});
+
+export { createCard, verifyAndCreateCard, getCardDetails };

@@ -1,6 +1,7 @@
 import express from "express";
 import {
     createCard,
+    getCardDetails,
     verifyAndCreateCard,
 } from "../controllers/card.controller.js";
 import verifyJWT from "../middlewares/auth.middleware.js";
@@ -15,6 +16,7 @@ const router = express.Router();
 router
     .route("/create")
     .post(createCardValidator(), validate, verifyJWT, createCard);
+router.route("/get").get(verifyJWT, getCardDetails);
 router
     .route("/verify/:verificationToken")
     .get(cardVerifyValidator(), validate, verifyAndCreateCard);
