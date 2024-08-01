@@ -13,9 +13,11 @@ export const verifyJWT = asyncHandler(async (req, res, next) => {
     if (!token) {
         throw new ApiError(401, "Unauthorized request");
     }
+    let userId;
 
     try {
         const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+        userId = decodedToken._id;
 
         const cachedUser = await redisClient.get(`user:${decodedToken._id}`);
         if (cachedUser) {
@@ -41,6 +43,11 @@ export const verifyJWT = asyncHandler(async (req, res, next) => {
 
         next();
     } catch (error) {
+        await User.findByIdAndUpdate(userId, {
+            isLoggedIn: false,
+        });
+        await redisClient.del(`user:${userId}`);
+
         throw new ApiError(401, error?.message || "Invalid access token");
     }
 });
