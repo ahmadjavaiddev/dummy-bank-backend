@@ -16,24 +16,16 @@ const generateVerificationToken = () => {
 
 const verificationUrl = (req, token, type) => {
     if (!type) {
-        return `${req.protocol}://${req.get(
-            "host"
-        )}/api/v1/users/verify/${token}`;
+        return `${req.get("origin")}/verify/${token}`;
     }
     if (type === "forgot") {
-        return `${req.protocol}://${req.get(
-            "host"
-        )}/api/v1/users/reset-password/${token}`;
+        return `${req.get("origin")}/api/v1/users/reset-password/${token}`;
     }
     if (type === "transactions") {
-        return `${req.protocol}://${req.get(
-            "host"
-        )}/api/v1/transactions/verify/${token}`;
+        return `${req.get("origin")}/api/v1/transactions/verify/${token}`;
     }
     if (type === "card") {
-        return `${req.protocol}://${req.get(
-            "host"
-        )}/api/v1/card/verify/${token}`;
+        return `${req.get("origin")}/api/v1/card/verify/${token}`;
     }
 };
 
