@@ -1,5 +1,6 @@
 import express from "express";
 import {
+    approveRequestedPayment,
     getTransactions,
     requestMoney,
     requestedTransactions,
@@ -27,5 +28,6 @@ router
     .route("/request")
     .post(verifyJWT, requestMoneyValidator(), validate, requestMoney);
 router.route("/requested").get(verifyJWT, requestedTransactions);
+router.route("/requested/approve/:transactionId").get(verifyJWT, approveRequestedPayment);
 
 export default router;
