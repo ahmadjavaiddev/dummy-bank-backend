@@ -3,6 +3,7 @@ import Transaction from "../models/transaction.model.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import User from "../models/user.model.js";
+import { redisClient } from "../utils/redis.js";
 import {
     emailQueue,
     notificationQueue,
@@ -24,6 +25,8 @@ const sendMoney = asyncHandler(async (req, res) => {
     if (!senderId) {
         throw new ApiError(401, "You must be logged in to send money!");
     }
+
+    await redisClient.del(`transactions:user:${senderId}`);
 
     const { receiverEmail, amount, description } = req.body;
 
@@ -101,6 +104,7 @@ const transactionVerify = asyncHandler(async (req, res) => {
 
     await transaction.save({ validateBeforeSave: false });
     await transactionQueue(transaction.from, transaction._id);
+    await redisClient.del(`transactions:user:${transaction.from}`);
 
     return res.status(200).json(
         new ApiResponse(
@@ -120,6 +124,8 @@ const requestMoney = asyncHandler(async (req, res) => {
     if (!userId) {
         throw new ApiError(401, "You must be logged in to request money!");
     }
+
+    await redisClient.del(`transactions:requested:user:${userId}`);
 
     const { senderEmail, amount, description } = req.body;
 
@@ -161,6 +167,7 @@ const approveRequestedPayment = asyncHandler(async (req, res) => {
     if (!transactionId) {
         throw new ApiError(400, "Transaction Id is missing!");
     }
+    await redisClient.del(`transactions:requested:user:${userId}`);
 
     const transaction = await Transaction.findOne({
         _id: transactionId,
@@ -178,11 +185,17 @@ const approveRequestedPayment = asyncHandler(async (req, res) => {
 
     transaction.verificationToken = hashedToken;
     transaction.verificationExpiry = tokenExpiry;
+    transaction.status = TransactionStatusEnum.QUEUED;
     await transaction.save({ validateBeforeSave: false });
 
     // Add Email To Queue
     const url = verificationUrl(req, unHashedToken, "transactions");
-    await emailQueue(userName, email, EmailSendEnum.TRANSACTION_VERIFY, url);
+    await emailQueue(
+        req.user.userName,
+        req.user.email,
+        EmailSendEnum.TRANSACTION_VERIFY,
+        url
+    );
     await notificationQueue(userId, "VERIFICATION", "Verify Your Transaction");
 
     return res.status(200).json(
@@ -203,10 +216,30 @@ const getTransactions = asyncHandler(async (req, res) => {
         throw new ApiError(401, "You must be logged in to get transactions!");
     }
 
+    const cachedUser = await redisClient.get(`transactions:user:${userId}`);
+    if (cachedUser) {
+        console.log("Data Found in Redis Cache!");
+        const transactions = JSON.parse(cachedUser);
+        return res.status(200).json(
+            new ApiResponse(
+                200,
+                {
+                    message: "Transactions Found!",
+                    success: true,
+                    transactions,
+                },
+                "Transactions Found!"
+            )
+        );
+    }
+
     // Find the User Completed Transactions
     const transactions = await Transaction.find({
         $or: [
-            { from: userId, status: "COMPLETED" },
+            {
+                from: userId,
+                status: ["COMPLETED", "FAILED", "QUEUED", "PENDING"],
+            },
             { to: userId, status: "COMPLETED" },
         ],
     }).populate("from to", "-_id userName email");
@@ -216,6 +249,13 @@ const getTransactions = asyncHandler(async (req, res) => {
     }
 
     transactions.reverse();
+
+    await redisClient.set(
+        `transactions:user:${userId}`,
+        JSON.stringify(transactions),
+        "EX",
+        6 * 3600
+    );
     return res
         .status(200)
         .json(
@@ -233,14 +273,43 @@ const requestedTransactions = asyncHandler(async (req, res) => {
         throw new ApiError(401, "You must be logged in to get transactions!");
     }
 
+    const cachedUser = await redisClient.get(
+        `transactions:requested:user:${userId}`
+    );
+    if (cachedUser) {
+        console.log("Requested Data Found in Redis Cache!");
+        const transactions = JSON.parse(cachedUser);
+        return res.status(200).json(
+            new ApiResponse(
+                200,
+                {
+                    message: "Transactions Found!",
+                    success: true,
+                    transactions,
+                },
+                "Transactions Found!"
+            )
+        );
+    }
+
     // Find the User Requested Transactions
     const transactions = await Transaction.find({
         to: userId,
+        status: TransactionStatusEnum.PENDING,
         type: TransactionTypeEnum.REQUEST,
-    });
+    }).populate("from to", "-_id userName email");
+
     if (!transactions) {
         throw new ApiError(400, "No Transactions Found!");
     }
+
+    transactions.reverse();
+    await redisClient.set(
+        `transactions:requested:user:${userId}`,
+        JSON.stringify(transactions),
+        "EX",
+        6 * 3600
+    );
 
     return res
         .status(200)
@@ -257,6 +326,7 @@ export {
     sendMoney,
     transactionVerify,
     requestMoney,
+    approveRequestedPayment,
     getTransactions,
     requestedTransactions,
 };
