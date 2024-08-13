@@ -42,6 +42,21 @@ const generateAccessAndRefreshTokens = async (userId, type) => {
     }
 };
 
+const refreshUserTokens = async (userId) => {
+    try {
+        const user = await User.findById(userId);
+        const accessToken = user.generateAccessToken();
+        const refreshToken = user.generateRefreshToken();
+
+        user.refreshToken = refreshToken;
+
+        await user.save({ validateBeforeSave: false });
+        return { accessToken, refreshToken };
+    } catch (error) {
+        throw new ApiError(500, "Error generating the access token", error);
+    }
+};
+
 const registerUser = asyncHandler(async (req, res) => {
     const { firstName, lastName, userName, email, password } = req.body;
 
@@ -318,24 +333,6 @@ const resetPassword = asyncHandler(async (req, res) => {
     await emailQueue(user.userName, user.email, EmailSendEnum.RESET_PASSWORD);
 });
 
-// const userHaveOTP = asyncHandler(async (req, res) => {
-//     const { userId } = req.params;
-//     if (!userId) {
-//         throw new ApiError(400, "User ID is required!");
-//     }
-
-//     const user = await User.findById(userId);
-//     if (!user) {
-//         throw new ApiError(404, "User Not Found!");
-//     }
-
-//     const youHaveOTP = user.verificationCode.code.length === 6 ? true : false;
-
-//     return res
-//         .status(200)
-//         .json({ message: "Request Processed!", exists: youHaveOTP });
-// });
-
 const refreshAccessToken = asyncHandler(async (req, res) => {
     const incomingRefreshToken =
         req.cookies.refreshToken || req.body.refreshToken;
@@ -360,7 +357,7 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
         }
 
         const { accessToken, refreshToken: newRefreshToken } =
-            await generateAccessAndRefreshTokens(user._id, "refresh");
+            await refreshUserTokens(user._id);
 
         return res
             .status(200)
