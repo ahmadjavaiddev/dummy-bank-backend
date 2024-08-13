@@ -2,6 +2,7 @@ import express from "express";
 import {
     approveRequestedPayment,
     getTransactions,
+    rejectRequestedPayment,
     requestMoney,
     requestedTransactions,
     sendMoney,
@@ -28,6 +29,11 @@ router
     .route("/request")
     .post(verifyJWT, requestMoneyValidator(), validate, requestMoney);
 router.route("/requested").get(verifyJWT, requestedTransactions);
-router.route("/requested/approve/:transactionId").get(verifyJWT, approveRequestedPayment);
+router
+    .route("/requested/approve/:transactionId")
+    .get(verifyJWT, approveRequestedPayment);
+router
+    .route("/requested/reject/:transactionId")
+    .get(verifyJWT, rejectRequestedPayment);
 
 export default router;

@@ -210,6 +210,55 @@ const approveRequestedPayment = asyncHandler(async (req, res) => {
     );
 });
 
+const rejectRequestedPayment = asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+    const { transactionId } = req.params;
+    if (!transactionId) {
+        throw new ApiError(400, "Transaction Id is missing!");
+    }
+    await redisClient.del(`transactions:requested:user:${userId}`);
+
+    const transaction = await Transaction.findOne({
+        _id: transactionId,
+        to: userId,
+        status: TransactionStatusEnum.PENDING,
+        type: TransactionTypeEnum.REQUEST,
+    });
+
+    if (!transaction) {
+        throw new ApiError(400, "Transaction not found!");
+    }
+
+    const { unHashedToken, hashedToken, tokenExpiry } =
+        generateVerificationToken();
+
+    transaction.verificationToken = hashedToken;
+    transaction.verificationExpiry = tokenExpiry;
+    transaction.status = TransactionStatusEnum.FAILED;
+    await transaction.save({ validateBeforeSave: false });
+
+    // Add Email To Queue
+    const url = verificationUrl(req, unHashedToken, "transactions");
+    await emailQueue(
+        req.user.userName,
+        req.user.email,
+        EmailSendEnum.TRANSACTION_VERIFY,
+        url
+    );
+    await notificationQueue(userId, "VERIFICATION", "Verify Your Transaction");
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            {
+                message: "Payment in process. Please verify transaction!",
+                success: true,
+            },
+            "Payment in process. Please verify transaction!"
+        )
+    );
+});
+
 const getTransactions = asyncHandler(async (req, res) => {
     const userId = req.user._id;
     if (!userId) {
@@ -327,6 +376,7 @@ export {
     transactionVerify,
     requestMoney,
     approveRequestedPayment,
+    rejectRequestedPayment,
     getTransactions,
     requestedTransactions,
 };
