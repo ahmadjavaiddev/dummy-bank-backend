@@ -16,13 +16,13 @@ const generateVerificationToken = () => {
 
 const verificationUrl = (req, token, type) => {
     if (!type) {
-        return `${req.get("origin")}/verify/${token}`;
+        return `${req.get("origin")}/verify/login/${token}`;
     }
     if (type === "forgot") {
         return `${req.get("origin")}/api/v1/users/reset-password/${token}`;
     }
     if (type === "transactions") {
-        return `${req.get("origin")}/api/v1/transactions/verify/${token}`;
+        return `${req.get("origin")}/verify/transactions/${token}`;
     }
     if (type === "card") {
         return `${req.get("origin")}/api/v1/card/verify/${token}`;

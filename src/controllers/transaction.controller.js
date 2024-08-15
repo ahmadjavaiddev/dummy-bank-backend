@@ -102,9 +102,10 @@ const transactionVerify = asyncHandler(async (req, res) => {
     transaction.verificationExpiry = undefined;
     transaction.status = TransactionStatusEnum.QUEUED;
 
+    await redisClient.del(`transactions:user:${transaction.from}`);
+    await redisClient.del(`transactions:user:${transaction.to}`);
     await transaction.save({ validateBeforeSave: false });
     await transactionQueue(transaction.from, transaction._id);
-    await redisClient.del(`transactions:user:${transaction.from}`);
 
     return res.status(200).json(
         new ApiResponse(
