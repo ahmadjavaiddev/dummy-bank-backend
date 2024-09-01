@@ -120,6 +120,42 @@ const transactionVerify = asyncHandler(async (req, res) => {
     );
 });
 
+const clearCache = asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+    if (!userId) {
+        throw new ApiError(401, "You must be logged in to request!");
+    }
+
+    await redisClient.del(`transactions:user:${userId}`);
+
+    // Find the User Transactions
+    const transactions = await Transaction.find({
+        $or: [
+            {
+                from: userId,
+                status: ["COMPLETED", "FAILED", "QUEUED", "PENDING"],
+            },
+            { to: userId, status: "COMPLETED" },
+        ],
+    }).populate("from to", "-_id userName email");
+
+    if (!transactions) {
+        throw new ApiError(400, "No Transactions Found!");
+    }
+
+    return res.status(201).json(
+        new ApiResponse(
+            201,
+            {
+                message: "Cache Cleared Successful!",
+                transactions: transactions.reverse(),
+                success: true,
+            },
+            "Cache Cleared Successful!"
+        )
+    );
+});
+
 const requestMoney = asyncHandler(async (req, res) => {
     const userId = req.user._id;
     if (!userId) {
@@ -375,6 +411,7 @@ const requestedTransactions = asyncHandler(async (req, res) => {
 export {
     sendMoney,
     transactionVerify,
+    clearCache,
     requestMoney,
     approveRequestedPayment,
     rejectRequestedPayment,

@@ -1,6 +1,7 @@
 import express from "express";
 import {
     approveRequestedPayment,
+    clearCache,
     getTransactions,
     rejectRequestedPayment,
     requestMoney,
@@ -25,6 +26,7 @@ router
 router
     .route("/verify/:verificationToken")
     .get(transactionVerifyValidator(), validate, transactionVerify);
+router.route("/cache/clear").get(verifyJWT, clearCache);
 router
     .route("/request")
     .post(verifyJWT, requestMoneyValidator(), validate, requestMoney);
